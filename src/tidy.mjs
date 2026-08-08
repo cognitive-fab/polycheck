@@ -306,6 +306,8 @@ function paint(on) {
   return { red: c('31'), green: c('32'), amber: c('33'), dim: c('2'), bold: c('1'), cyan: c('36') };
 }
 
+const trunc = (s, n = 88) => (String(s).length > n ? String(s).slice(0, n - 1) + '…' : String(s));
+
 const VERDICT_BLURB = {
   KEEP: 'earning its place',
   DEDUP: 'another rule already admits it',
@@ -386,9 +388,20 @@ export function renderTidyText(bundle, t, opts = {}) {
     } else if (proof.direction === 'narrowing') {
       L.push(`  ${amber('•')} removing ${n} rule${n > 1 ? 's' : ''} ${amber(bold('narrows the model'))} — what moved:`);
       for (const k of proof.changed) {
-        const fmt = (v) => (Array.isArray(v) ? (v.join(', ') || '∅') : Object.entries(v).map(([a, b]) => `${a}=${b}`).join(', '));
-        L.push(dim(`      ${k}:  ${fmt(proof.before[k])}`));
-        L.push(dim(`      ${' '.repeat(k.length)}→  ${fmt(proof.after[k])}`));
+        const b0 = proof.before[k], a0 = proof.after[k];
+        if (!Array.isArray(b0)) {
+          const fmt = (v) => Object.entries(v).map(([a, x]) => `${a}=${x}`).join(', ');
+          L.push(dim(`      ${k}:  ${fmt(b0)}  →  ${fmt(a0)}`));
+          continue;
+        }
+        // These lists can run to hundreds of entries on a real policy — the
+        // interesting part is the DELTA, so show that and keep the full dump
+        // behind --verbose rather than flooding the terminal with one line.
+        const dropped = b0.filter((x) => !a0.includes(x));
+        L.push(dim(`      ${k}:  ${b0.length} → ${a0.length}`) + (dropped.length ? dim(`  (${dropped.length} gone)`) : ''));
+        const show = verbose ? dropped : dropped.slice(0, 6);
+        for (const d of show) L.push(dim(`        − ${trunc(d, 96)}`));
+        if (dropped.length > show.length) { L.push(dim(`        … and ${dropped.length - show.length} more (--verbose)`)); }
       }
       if (t.understates.length) {
         const m = t.understates.length;

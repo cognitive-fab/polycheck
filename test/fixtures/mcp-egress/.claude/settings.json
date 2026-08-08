@@ -1,0 +1,13 @@
+{
+  "//": "An MCP tool as the egress channel. allow: a Slack send tool + Read(./**). No curl, no WebFetch anywhere — yet mcp__slack__send_message is a first-class exfil primitive (it carries bytes to an external system). polycheck must find the bypass: Read supplies sensitive, the MCP send supplies untrusted+egress.",
+  "permissions": {
+    "allow": [
+      "mcp__slack__send_message",
+      "Read(./**)",
+      "Bash(git status:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

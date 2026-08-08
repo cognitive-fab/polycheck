@@ -1,0 +1,15 @@
+{
+  "//": "The reviewer's scenario: a human gated Bash(curl:*) and believes egress is closed — but WebFetch is BOTH ingest and egress. allow: WebFetch + Read(./**) leaves an ungated trifecta (WebFetch supplies untrusted AND egress; Read supplies sensitive). polycheck must find this bypass even though 'curl' appears nowhere.",
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Read(./**)",
+      "Bash(git status:*)"
+    ],
+    "deny": [
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(rm:*)"
+    ]
+  }
+}

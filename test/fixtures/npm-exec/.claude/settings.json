@@ -1,0 +1,12 @@
+{
+  "//": "A policy that looks tightly scoped but isn't. Bash(npm run build:*) reads as 'only the build script' — but npm run executes whatever package.json defines, and the prefix even matches npm run build:anything. That is arbitrary code execution, so it is declared worst-case and alone completes the trifecta.",
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Read(./src/**)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

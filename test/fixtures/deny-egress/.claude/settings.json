@@ -1,0 +1,7 @@
+{
+  "//": "A GENUINE deny: the egress tools were granted, then denied (deny takes precedence in Claude Code). The deny suppressed a real would-be edge, so the region is closed BY the deny — PROOF-by-denial (exit 0), not a coverage gap. This is the deny actually doing work.",
+  "permissions": {
+    "allow": ["Read(./**)", "WebFetch", "Bash(curl:*)", "Bash(wget:*)"],
+    "deny": ["WebFetch", "Bash(curl:*)", "Bash(wget:*)"]
+  }
+}

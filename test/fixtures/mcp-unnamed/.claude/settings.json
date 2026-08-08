@@ -1,0 +1,4 @@
+{
+  "//": "A server declared in .mcp.json with no permission rules. Claude Code would prompt, but that gating is polycheck's own assumption, not a written rule — so it must not be the sole mediator of a green PROOF. Routes to INCONCLUSIVE.",
+  "permissions": { "allow": ["Read(./**)"] }
+}

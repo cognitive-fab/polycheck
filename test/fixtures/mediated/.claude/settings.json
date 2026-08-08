@@ -1,0 +1,22 @@
+{
+  "//": "A genuinely mediated policy. Reads stay allowed; EVERY egress primitive is gated — not just Bash(curl) but WebFetch (also an egress channel) and any arbitrary-execution wrapper. This is what it actually takes to earn a PROOF: gating one exfil tool while leaving another open does not.",
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./src/**)",
+      "Bash(git status:*)",
+      "Bash(ls:*)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(git push:*)",
+      "Bash(npm run test:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

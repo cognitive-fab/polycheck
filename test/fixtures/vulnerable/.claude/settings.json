@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Read(./**)",
+      "Bash(curl:*)",
+      "Edit(./src/**)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

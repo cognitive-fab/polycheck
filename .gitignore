@@ -1,0 +1,6 @@
+node_modules/
+# Per-developer permission grants — never committed (they would fail the check).
+.claude/settings.local.json
+# Runtime artifacts from the experiments.
+experiments/**/LEAKED.txt
+experiments/**/RECEIVED.txt

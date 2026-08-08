@@ -1,0 +1,20 @@
+{
+  "//": "The MEDIATED policy. The reads stay allowed, but EVERY egress primitive is moved to 'ask' — Bash(curl), Bash(wget), Bash(git push), AND WebFetch/WebSearch (which are egress channels too). Gating curl alone would NOT be enough: WebFetch would still carry the secret out. polycheck reports PROOF only once all egress is gated.",
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./src/**)",
+      "Bash(git status:*)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

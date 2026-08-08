@@ -1,0 +1,12 @@
+{
+  "//": "The common case: WebFetch is allowed (ingest + egress), but Read is never listed — because Claude Code auto-allows it. With --assume-defaults (default) the auto-allowed Read supplies 'sensitive' and this is a real BYPASS; strict mode reports it as a coverage gap.",
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Bash(git status:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

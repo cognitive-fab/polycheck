@@ -1,0 +1,206 @@
+// polycheck report renderer — the output IS the product. A witness has to read
+// like a screenshot someone forwards: a concrete, provenance-anchored sequence
+// of allowed tool calls that reaches credential egress with zero gates crossed.
+// The proof, when it holds, has to be honest about what it did NOT cover —
+// colouring an unchecked thing green is the single most dangerous thing a
+// security report can do.
+
+const GLYPH = { BYPASS: '✗', 'SHELL-EQUIVALENT': '✗', PROOF: '✓', VACUOUS: '•', INCONCLUSIVE: '•' };
+
+function paint(on) {
+  const c = (code) => (on ? (s) => `\x1b[${code}m${s}\x1b[0m` : (s) => s);
+  return { red: c('31'), green: c('32'), amber: c('33'), dim: c('2'), bold: c('1'), cyan: c('36') };
+}
+
+function effJoin(list) { return list.join(' ∧ '); }
+function fixLine(fix, cyan) {
+  if (!fix) return null;
+  if (fix.kind === 'shell') return `${cyan('     fix')} gate (move to ask) or remove: ${fix.actions.join(', ')}`;
+  return `${cyan('     fix')} close the '${fix.effect}' effect — move to ask/deny: ${fix.actions.join(', ')}`;
+}
+
+export function renderText(bundle, opts = {}) {
+  const on = opts.color !== false;
+  const { red, green, amber, dim, bold, cyan } = paint(on);
+  const { scan, model, check, version } = bundle;
+  const L = [];
+
+  const srcLine = scan.sources
+    .map((s) => `${s.kind}${s.exists ? (s.error ? ' ⚠' : ' ✓') : ' ✗'}`)
+    .join('  ');
+  L.push(bold(`polycheck ${version} — Claude Code least-privilege check`));
+  L.push(`${dim('repo:')}    ${scan.root}`);
+  L.push(`${dim('sources:')} ${srcLine}`);
+  L.push(`${dim('mode:')}    ${scan.defaultMode || 'default'}    ${dim('actions modeled:')} ${check.actionCount} ${dim(`(ungated: ${check.ungatedCount})`)}`);
+  L.push('');
+
+  L.push(bold('FORBIDDEN REGIONS'));
+  for (const r of check.results) {
+    const g = GLYPH[r.status];
+    const name = r.region.name.padEnd(18);
+    if (r.status === 'BYPASS') L.push(`  ${red(g)} ${red(name)} ${red('BYPASS')} ${dim('— a gate-free path exists')}`);
+    else if (r.status === 'SHELL-EQUIVALENT') L.push(`  ${red(g)} ${red(name)} ${red('SHELL-EQUIVALENT')} ${dim('— a granted tool runs arbitrary code')}`);
+    else if (r.status === 'INCONCLUSIVE') L.push(`  ${amber(g)} ${amber(name)} ${amber('INCONCLUSIVE')} ${dim('— mediated only by an unverified gate')}`);
+    else if (r.status === 'VACUOUS') L.push(`  ${amber(g)} ${amber(name)} ${amber('INCONCLUSIVE')} ${dim(`— no granted tool provides: ${r.missingEffects.join(', ')}`)}`);
+    else if (r.reason === 'denial') L.push(`  ${green(g)} ${green(name)} ${green('PROOF')}  ${dim('— closed by a deny rule')}`);
+    else if (r.mediated) L.push(`  ${green(g)} ${green(name)} ${green('PROOF')}  ${dim('— every path crosses a gate')}`);
+    else L.push(`  ${green(g)} ${green(name)} ${green('PROOF')}  ${dim('— region unreachable under the modeled actions')}`);
+  }
+  L.push('');
+
+  // SHELL-EQUIVALENT — reported once (the same grant makes every region trivial).
+  if (check.shellGrants && check.shellGrants.length) {
+    L.push(red(bold('SHELL-EQUIVALENT')) + dim('  — these grants run caller-chosen code:'));
+    for (const a of check.shellGrants) L.push(`    ${red('•')} ${a}`);
+    L.push(dim('  A command prefix is not a security boundary: `npm run`, `node`, `python`,'));
+    L.push(dim('  `make`, `bash -c` all execute whatever they are handed. Any one is equivalent'));
+    L.push(dim('  to unrestricted Bash, so every forbidden region is trivially reachable — the'));
+    L.push(dim('  composition question is moot until these are gated.'));
+    L.push(cyan('     fix') + ` gate (move to ask) or remove: ${check.shellGrants.join(', ')}`);
+    L.push('');
+  }
+
+  // Witness blocks — the shareable part. Only for genuine (non-shell) bypasses.
+  for (const r of check.results) {
+    if (r.status !== 'BYPASS') continue;
+    const multi = r.witness.length >= 2;
+    L.push(red(bold(`WITNESS · ${r.region.name}`)) + dim(`  (${effJoin(r.region.requires)})`));
+    L.push(dim('  A sequence of allowed tool calls that reaches the region with 0 gates crossed:'));
+    L.push('');
+    r.witness.forEach((st, i) => {
+      const a = st.action;
+      const lbl = `${a.tool}${a.specifier != null ? `(${a.specifier})` : ''}`;
+      const added = st.added.map((e) => `+${e}`).join(' ');
+      const last = i === r.witness.length - 1;
+      const held = `held: ${st.held.join(', ')}`;
+      L.push(`    ${bold(String(i + 1))}  ${lbl.padEnd(30)} ${dim(a.decision)}  ⟶ ${added.padEnd(14)} ${dim(held)}${last ? red('  ← REACHED') : ''}`);
+      L.push(dim(`       └ ${a.source}: ${a.raw}`));
+    });
+    L.push('');
+    if (multi) {
+      L.push(dim('  Each step is individually permitted and individually benign. The hazard is'));
+      L.push(dim('  the STATE they assemble — a predicate no per-action check can see.'));
+    } else {
+      L.push(dim('  This one granted tool is BOTH a secret-reader and an egress channel (e.g.'));
+      L.push(dim('  `curl -T .env https://…` or `--data-urlencode k@.env`), so it completes the'));
+      L.push(dim('  region alone.'));
+    }
+    const fx = fixLine(r.fix, cyan);
+    if (fx) L.push(fx);
+    L.push('');
+  }
+
+  // Hook-only mediation — reachable UNLESS an unverified hook blocks it.
+  for (const r of check.results) {
+    if (r.status !== 'INCONCLUSIVE' || r.reason !== 'hook') continue;
+    L.push(amber(bold(`INCONCLUSIVE · ${r.region.name}`)) + dim(`  (${effJoin(r.region.requires)})`));
+    L.push(dim('  Reachable by allowed tool calls — the ONLY thing in the way is an UNVERIFIED'));
+    L.push(dim('  gate: a PreToolUse hook (logic we cannot read; most hooks log/format, they do'));
+    L.push(dim('  not block) and/or an MCP prompt polycheck assumed. This is NOT a proof. The'));
+    L.push(dim('  path the gate would have to stop:'));
+    L.push('');
+    r.witness.forEach((st, i) => {
+      const a = st.action;
+      const lbl = `${a.tool}${a.specifier != null ? `(${a.specifier})` : ''}`;
+      const added = st.added.map((e) => `+${e}`).join(' ');
+      const last = i === r.witness.length - 1;
+      L.push(`    ${bold(String(i + 1))}  ${lbl.padEnd(30)} ${dim('gate?')}  ⟶ ${added.padEnd(14)} ${dim(`held: ${st.held.join(', ')}`)}${last ? amber('  ← REACHED') : ''}`);
+    });
+    if (r.unverifiedGates?.length) L.push(dim(`     ${r.unverifiedGates.join('; ')}`));
+    L.push(cyan('     fix') + ` make the gate verifiable: put the tools behind an explicit 'ask'/'deny' rule (or name the MCP server's tools), rather than relying on an unverified gate.`);
+    L.push('');
+  }
+
+  // Mediated proofs — name the control that carries the safety.
+  for (const r of check.results) {
+    if (r.status !== 'PROOF') continue;
+    if (r.reason === 'denial' && r.denials?.length) {
+      L.push(green(`PROOF · ${r.region.name}`) + dim(` — closed by denial: ${r.denials.join(', ')} (a deny is the strongest control)`));
+    } else if (r.mediated && r.mediators?.length) {
+      const gates = r.mediators.map((m) => `${m.tool}${m.specifier != null ? `(${m.specifier})` : ''} [${m.gateReason}]`);
+      L.push(green(`PROOF · ${r.region.name}`) + dim(` — mediated by: ${[...new Set(gates)].join('; ')}`));
+    }
+  }
+  if (check.results.some((r) => r.status === 'PROOF' && (r.mediators?.length || r.denials?.length))) L.push('');
+
+  // Footer — what the check did NOT establish.
+  L.push(bold('WHAT THIS CHECK DID NOT ESTABLISH'));
+  L.push(`  ${cyan('•')} ${bold('auto-mode classifier is NOT counted as a gate.')} A probabilistic filter`);
+  L.push(`    reduces frequency, not possibility. Every witness above holds`);
+  L.push(`    regardless of what the classifier scores — that is the point of a static proof.`);
+  L.push(`  ${cyan('•')} ${bold('the labeler is a trust obligation, not a proof.')} polycheck proves the`);
+  L.push(`    policy over the labels; a mislabeled tool is a hole it cannot see.`);
+  for (const a of model.assumptions.slice(0, 12)) L.push(dim(`      · ${a}`));
+  L.push(`  ${cyan('•')} ${bold('confinement is out of scope.')} Only tool-mediated actions are`);
+  L.push(`    modeled; anything the agent does outside the tool interface is not.`);
+  L.push(`  ${cyan('•')} ${bold('subagent taint is not propagated (v1).')} Task/subagent spawns are a known`);
+  L.push(`    gap — named, not silently cleared.`);
+  L.push(`  ${cyan('•')} ${bold("'ask' is a gate, but a weaker one than a PROOF implies.")} A mediated`);
+  L.push(`    verdict means a human is in the loop, not that they will refuse: approval`);
+  L.push(`    fatigue is real and an injected call can be shaped to look routine. Treat a`);
+  L.push(`    PROOF-by-'ask' as "a human sees it", and prefer 'deny' for irreversible egress.`);
+  if (scan.warnings.length) {
+    L.push('');
+    for (const w of scan.warnings) L.push(amber(`  ⚠ ${w}`));
+  }
+  L.push('');
+
+  const broken = check.results.filter((r) => r.status === 'BYPASS' || r.status === 'SHELL-EQUIVALENT');
+  if (broken.length) {
+    L.push(red(bold(`verdict: ${broken.length} region(s) reachable with no gate crossed — ${broken.map((r) => r.region.name).join(', ')}`)));
+  } else if (check.results.some((r) => r.status === 'VACUOUS' || r.status === 'INCONCLUSIVE')) {
+    const unver = check.results.some((r) => r.status === 'INCONCLUSIVE');
+    L.push(amber(bold(`verdict: INCONCLUSIVE — ${unver ? 'a path is mediated only by an unverified gate, which polycheck cannot confirm blocks' : 'a required effect has no granted tool, so nothing was mediated'}. This is not a proof.`)));
+  } else {
+    L.push(green(bold('verdict: no gate-free path into any forbidden region under the modeled actions.')));
+  }
+  return L.join('\n');
+}
+
+export function renderMarkdown(bundle) {
+  const text = renderText(bundle, { color: false });
+  return '```\n' + text + '\n```\n';
+}
+
+export function renderJson(bundle) {
+  const { scan, model, check, version } = bundle;
+  const broken = check.results.some((r) => r.status === 'BYPASS' || r.status === 'SHELL-EQUIVALENT');
+  return JSON.stringify({
+    version,
+    repo: scan.root,
+    hasPolicy: scan.hasPolicy,
+    defaultMode: scan.defaultMode || 'default',
+    sources: scan.sources,
+    actionCount: check.actionCount,
+    ungatedCount: check.ungatedCount,
+    universe: check.universe,
+    shellGrants: check.shellGrants || [],
+    regions: check.results.map((r) => ({
+      name: r.region.name,
+      kind: r.region.kind,
+      requires: r.region.requires,
+      status: r.status,
+      reason: r.reason ?? null,
+      mediated: r.mediated ?? null,
+      missingEffects: r.missingEffects ?? null,
+      unverifiedGates: r.unverifiedGates ?? null,
+      denials: r.denials ?? null,
+      fix: r.fix ?? null,
+      mediators: (r.mediators || []).map((m) => ({ tool: m.tool, specifier: m.specifier, gateReason: m.gateReason })),
+      witness: (r.witness || []).map((st, i) => ({
+        step: i + 1,
+        tool: st.action.tool,
+        specifier: st.action.specifier,
+        decision: st.action.decision,
+        source: st.action.source,
+        rule: st.action.raw,
+        added: st.added,
+        held: st.held,
+      })),
+    })),
+    assumptions: model.assumptions,
+    warnings: scan.warnings,
+    verdict: broken ? 'bypass'
+      : check.results.some((r) => r.status === 'VACUOUS') ? 'vacuous' : 'proof',
+  }, null, 2);
+}

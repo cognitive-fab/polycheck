@@ -1,0 +1,41 @@
+{
+  "name": "@cognitive-fab/polycheck",
+  "version": "0.1.0",
+  "description": "A least-privilege linter for Claude Code agent policies. Ingests a repo's .claude settings + MCP config and outputs a proof (every path into a forbidden region crosses a gate) or a witness: a concrete sequence of allowed tool calls that reaches credential egress with zero gates crossed. Zero dependencies, offline, deterministic.",
+  "type": "module",
+  "bin": {
+    "polycheck": "bin/polycheck.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "test": "node --no-warnings --test test/polycheck.test.mjs",
+    "self": "node bin/polycheck.mjs .",
+    "demo": "node demo/showcase.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "src",
+    "data",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude-code",
+    "security",
+    "static-analysis",
+    "least-privilege",
+    "linter",
+    "lethal-trifecta"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cognitive-fab/polycheck.git"
+  },
+  "homepage": "https://github.com/cognitive-fab/polycheck#readme",
+  "license": "Apache-2.0"
+}

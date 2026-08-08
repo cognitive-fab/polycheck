@@ -1,0 +1,25 @@
+{
+  "//": "polycheck's own policy — and it passes its own check (PROOF). Reads and local edits are allowed; every egress primitive (WebFetch, curl, wget, git push) and every arbitrary-execution wrapper (npm/node test runs) is gated behind 'ask'. Run `polycheck .` here and it is green. Per-developer grants belong in settings.local.json (gitignored), not here.",
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./src/**)",
+      "Edit(./test/**)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(ls:*)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(git push:*)",
+      "Bash(npm run test:*)",
+      "Bash(node --test:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

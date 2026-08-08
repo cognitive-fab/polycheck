@@ -1,0 +1,7 @@
+{
+  "//": "Denying a tool that was never granted. curl was never allowed, so the deny suppressed nothing — it closed no live edge. It must NOT produce PROOF (that would be a false 'closed by denial' claim and a one-line way to buy a green). Stays INCONCLUSIVE (coverage: no granted egress tool).",
+  "permissions": {
+    "allow": ["Bash(git status:*)"],
+    "deny": ["Bash(curl:*)"]
+  }
+}

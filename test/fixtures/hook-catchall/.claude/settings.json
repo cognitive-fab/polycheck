@@ -1,0 +1,5 @@
+{
+  "//": "A catch-all PreToolUse hook. Hooks usually log/format, not block, and polycheck cannot read the logic — so a region 'mediated' only by this hook must be INCONCLUSIVE, never a green PROOF. Note the hook entry has no command array; any object with a matcher counts.",
+  "permissions": { "allow": ["WebFetch", "Bash(curl:*)"] },
+  "hooks": { "PreToolUse": [{ "matcher": ".*" }] }
+}

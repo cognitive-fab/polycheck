@@ -1,0 +1,15 @@
+{
+  "//": "A perfectly ordinary developer policy: read the project, run the tests, and reach the network for legitimate tasks. Nothing here looks malicious — yet it allows the sensitive-read + egress composition with no gate. polycheck reports BYPASS; the confused-deputy scenario shows an ordinary request walk right through it.",
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./src/**)",
+      "Bash(curl:*)",
+      "Bash(npm run test:*)",
+      "WebFetch"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "//": "allow WebFetch, deny Read. Read is denied, but Grep (also auto-allowed, also reads files) still supplies 'sensitive' — so the hole is real. The fix must name WebFetch (user-written, egress), never the assumed Grep the user did not write.",
+  "permissions": { "allow": ["WebFetch"], "deny": ["Read"] }
+}

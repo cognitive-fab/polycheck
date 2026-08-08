@@ -16,7 +16,9 @@
     "Glob": { "effects": [], "note": "path enumeration; discloses names, not contents" },
     "Grep": { "effects": [], "sensitiveWhenPathMatches": true, "note": "can read secret file contents if pointed at them; treated like Read for the sensitive class" },
     "Bash": { "classify": "bash", "worstCaseWhenUnrestricted": ["untrusted", "sensitive", "egress"], "note": "effect depends on the command string; see bashPatterns. An unrestricted Bash (no specifier, '*', or ':*') is gated on DECLARED WORST-CASE — it alone can complete the trifecta." },
-    "Task": { "effects": [], "delegates": true, "note": "spawns a subagent — a delegation edge. v1 does NOT propagate taint across the spawn (a known gap in v1). Reported loudly, not silently cleared." }
+    "Task": { "effects": [], "delegates": true, "note": "spawns a subagent — a delegation edge. v1 does NOT propagate taint across the spawn (a known gap in v1). Reported loudly, not silently cleared." },
+    "PowerShell": { "classify": "bash", "worstCaseWhenUnrestricted": ["untrusted", "sensitive", "egress"], "note": "a general-purpose shell like Bash: an unrestricted grant runs arbitrary code (shell-equivalent), and specific commands are matched by the bash pattern lists — which include PowerShell idioms (Invoke-WebRequest/iwr, Invoke-RestMethod/irm, Get-Credential, iex, Start-Process)." },
+    "pwsh": { "classify": "bash", "worstCaseWhenUnrestricted": ["untrusted", "sensitive", "egress"], "note": "PowerShell Core — same treatment as PowerShell." }
   },
   "mcp": {
     "untrustedByDefault": true,
@@ -34,7 +36,9 @@
       "\\bcurl\\b", "\\bwget\\b", "\\bnc\\b", "\\bncat\\b", "\\bnetcat\\b", "\\btelnet\\b",
       "\\bscp\\b", "\\bsftp\\b", "\\brsync\\b", "\\bssh\\b", "\\bftp\\b",
       "git\\s+push", "npm\\s+publish", "yarn\\s+publish", "\\bmail\\b", "\\bsendmail\\b",
-      ">\\s*/dev/tcp", "\\bhttpie\\b", "\\bhttp\\b\\s", "\\baws\\s+s3\\s+cp\\b"
+      ">\\s*/dev/tcp", "\\bhttpie\\b", "\\bhttp\\b\\s",
+      "\\baws\\s+s3\\b", "\\baws\\s+sns\\s+publish\\b", "\\baws\\s+sqs\\s+send-message\\b", "\\baws\\s+lambda\\s+invoke\\b",
+      "Invoke-WebRequest", "\\biwr\\b", "Invoke-RestMethod", "\\birm\\b", "Start-BitsTransfer", "Send-MailMessage"
     ],
     "sensitive": [
       "\\bcurl\\b", "\\bwget\\b", "\\bscp\\b", "\\brsync\\b", "\\bssh\\b", "\\bsftp\\b",
@@ -44,11 +48,14 @@
       "\\.pem\\b", "\\.key\\b", "\\.netrc\\b", "\\.git-credentials\\b",
       "\\bcredentials?\\b", "\\bsecrets?\\b", "\\btoken\\b", "\\bpassword\\b",
       "aws\\s+configure\\s+get", "gcloud\\s+auth", "security\\s+find-generic-password",
-      "kubectl\\s+get\\s+secret", "vault\\s+read", "op\\s+read", "op\\s+item\\s+get"
+      "kubectl\\s+get\\s+secret", "vault\\s+read", "op\\s+read", "op\\s+item\\s+get",
+      "\\baws\\s+configure\\b", "\\baws\\s+secretsmanager\\b", "\\baws\\s+ssm\\s+get-parameter", "\\baws\\s+sts\\b", "\\baws\\s+ecr\\s+get-login", "\\baws\\s+s3\\b",
+      "Get-Credential", "ConvertFrom-SecureString", "\\bGet-Secret\\b", "Import-Clixml"
     ],
     "untrusted": [
       "\\bcurl\\b", "\\bwget\\b", "git\\s+clone", "pip\\s+install", "npm\\s+install",
-      "npx\\b", "\\bgh\\b\\s+.*(view|read)", "\\bhttpie\\b"
+      "npx\\b", "\\bgh\\b\\s+.*(view|read)", "\\bhttpie\\b",
+      "Invoke-WebRequest", "\\biwr\\b", "Invoke-RestMethod", "\\birm\\b"
     ]
   },
   "//bashArbitraryExecution": "Commands whose prefix is NOT a security boundary: they run caller-chosen code, so bounding them by a Bash(prefix:*) rule proves nothing. `npm run test` executes whatever package.json says (and prefix-matches `npm run test:whatever`); `make`, `python`, `bash -c`, `xargs`, `find -exec`, `git -c core.pager=…` all execute arbitrary code. Any match here is declared WORST-CASE (untrusted ∧ sensitive ∧ egress) — the single largest source of false-PROOF if omitted.",
@@ -59,7 +66,8 @@
     "\\bmake\\b", "\\bjust\\b", "\\btask\\b", "\\bcargo\\b", "\\bgo\\s+run\\b",
     "\\bmvn\\b", "\\bgradle\\b", "\\bdocker\\b", "\\bgh\\s+api\\b", "\\bxargs\\b",
     "-exec\\b", "\\bsudo\\b", "\\benv\\s+\\w+=", "\\bawk\\b",
-    "\\bgit\\s+-c\\b", "\\bgit\\s+config\\b"
+    "\\bgit\\s+-c\\b", "\\bgit\\s+config\\b",
+    "Invoke-Expression", "\\biex\\b", "\\bpowershell\\b", "\\bpwsh\\b", "\\bStart-Process\\b"
   ],
   "defaultUngated": ["Read", "Glob", "Grep", "LS", "NotebookRead"],
   "//defaultUngated": "Built-in read-only tools Claude Code runs WITHOUT a prompt even with an empty policy. They are ungated allow-edges by default (version-dependent; override with --labels). This is why an empty policy is not automatically safe: Read alone supplies the 'sensitive' effect. Surfaced as an assumption in every report.",

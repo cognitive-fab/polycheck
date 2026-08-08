@@ -15,11 +15,12 @@ import { analyze, DEFAULT_LABELS, DEFAULT_REGIONS } from '../src/index.mjs';
 import { renderText, renderMarkdown, renderJson } from '../src/report.mjs';
 
 function parseArgs(argv) {
-  const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true };
+  const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true, verbose: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') opts.format = 'json';
     else if (a === '--md' || a === '--markdown') opts.format = 'md';
+    else if (a === '--verbose' || a === '-v') opts.verbose = true;
     else if (a === '--no-color') opts.color = false;
     else if (a === '--color') opts.color = true;
     else if (a === '--assume-defaults') opts.assumeDefaults = true;
@@ -42,6 +43,7 @@ allowed tool calls that reaches credential egress with zero gates crossed).
 
 Usage:
   polycheck [path]                 check a repo (default: current directory)
+  polycheck . --verbose            expand grouped grants + every assumption (human-readable)
   polycheck . --json | --md        machine output / paste-ready block
   polycheck . --no-assume-defaults strict: model only explicitly-granted permissions
   polycheck . --labels <file>      override the effect-label pack
@@ -75,8 +77,8 @@ function main() {
 
   const color = opts.color ?? (process.stdout.isTTY && !process.env.NO_COLOR);
   if (opts.format === 'json') process.stdout.write(renderJson(bundle) + '\n');
-  else if (opts.format === 'md') process.stdout.write(renderMarkdown(bundle));
-  else process.stdout.write(renderText(bundle, { color }) + '\n');
+  else if (opts.format === 'md') process.stdout.write(renderMarkdown(bundle, { verbose: opts.verbose }));
+  else process.stdout.write(renderText(bundle, { color, verbose: opts.verbose }) + '\n');
 
   const statuses = bundle.check.results.map((r) => r.status);
   if (statuses.includes('BYPASS') || statuses.includes('SHELL-EQUIVALENT')) process.exit(1);

@@ -36,9 +36,11 @@ function fixLine(fix, cyan) {
 
 export function renderText(bundle, opts = {}) {
   const on = opts.color !== false;
+  const verbose = opts.verbose === true;
   const { red, green, amber, dim, bold, cyan } = paint(on);
   const { scan, model, check, version } = bundle;
   const L = [];
+  let collapsed = false; // true if we hid detail that --verbose would show
 
   const srcLine = scan.sources
     .map((s) => `${s.kind}${s.exists ? (s.error ? ' ⚠' : ' ✓') : ' ✗'}`)
@@ -72,10 +74,12 @@ export function renderText(bundle, opts = {}) {
     // grouped counts, wrapped to a few per line so it stays readable
     const chips = groups.map(([exe, c]) => `${exe}${c > 1 ? dim(` ×${c}`) : ''}`);
     for (let i = 0; i < chips.length; i += 6) L.push('    ' + chips.slice(i, i + 6).join(dim('  ·  ')));
+    if (verbose) { L.push(''); for (const g of grants) L.push(`    ${red('•')} ${g}`); }
+    else if (grants.length > groups.length) collapsed = true;
     L.push(dim('  A command prefix is not a security boundary: npm run, node, python, bash -c'));
     L.push(dim('  all execute whatever they are handed — any one is equivalent to unrestricted'));
     L.push(dim('  Bash, so every forbidden region is trivially reachable.'));
-    L.push(cyan('     fix') + dim(`  move these behind 'ask'/'deny', or narrow each to fixed arguments (\`--json\` lists them all).`));
+    L.push(cyan('     fix') + dim(`  move these behind 'ask'/'deny', or narrow each to fixed arguments.`));
     L.push('');
   }
 
@@ -152,9 +156,10 @@ export function renderText(bundle, opts = {}) {
   // Drop ARBITRARY-EXECUTION / WORST-CASE notes here — they just restate the
   // SHELL-EQUIVALENT section. Keep the ones that reveal blind spots (unlabeled
   // tools, MCP assumptions, commands matched as benign — those hint at gaps).
-  const notes = model.assumptions.filter((a) => !/^(ARBITRARY-EXECUTION|WORST-CASE)/.test(a));
-  for (const a of notes.slice(0, 8)) L.push(dim(`      · ${trunc(a, 128)}`));
-  if (notes.length > 8) L.push(dim(`      · … and ${notes.length - 8} more (\`--json\` for all)`));
+  const notes = verbose ? model.assumptions : model.assumptions.filter((a) => !/^(ARBITRARY-EXECUTION|WORST-CASE)/.test(a));
+  const cap = verbose ? notes.length : 8;
+  for (const a of notes.slice(0, cap)) L.push(dim(`      · ${verbose ? a : trunc(a, 128)}`));
+  if (notes.length > cap) { L.push(dim(`      · … and ${notes.length - cap} more`)); collapsed = true; }
   L.push(`  ${cyan('•')} ${bold('confinement is out of scope.')} Only tool-mediated actions are`);
   L.push(`    modeled; anything the agent does outside the tool interface is not.`);
   L.push(`  ${cyan('•')} ${bold('subagent taint is not propagated (v1).')} Task/subagent spawns are a known`);
@@ -178,11 +183,18 @@ export function renderText(bundle, opts = {}) {
   } else {
     L.push(green(bold('verdict: no gate-free path into any forbidden region under the modeled actions.')));
   }
+  L.push('');
+  if (!verbose && collapsed) {
+    L.push(dim('Output was collapsed for readability. Run with ') + '--verbose' + dim(' for every grant and'));
+    L.push(dim('assumption in full, or ') + '--json' + dim(' for machine-readable output.'));
+  } else {
+    L.push(dim('Machine-readable output: run with ') + '--json' + dim('.'));
+  }
   return L.join('\n');
 }
 
-export function renderMarkdown(bundle) {
-  const text = renderText(bundle, { color: false });
+export function renderMarkdown(bundle, opts = {}) {
+  const text = renderText(bundle, { color: false, verbose: opts.verbose === true });
   return '```\n' + text + '\n```\n';
 }
 

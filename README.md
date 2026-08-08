@@ -123,6 +123,7 @@ compositions. Every finding ends with the minimal edit that closes it.
 
 ```
 polycheck [path]                 check a repo (default: current directory)
+polycheck . --verbose            expand grouped grants + every assumption (human-readable)
 polycheck . --json               machine-readable output
 polycheck . --md                 a fenced block ready to paste into an issue/PR
 polycheck . --labels <file>      override the effect-label pack

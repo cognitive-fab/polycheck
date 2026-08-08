@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { analyze } from '../src/index.mjs';
 import { renderText, renderJson } from '../src/report.mjs';
+import { loadLabels, labelEffects } from '../src/label.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fix = (name) => join(HERE, 'fixtures', name);
@@ -212,6 +213,23 @@ test('B2: an undeclared MCP server is an assumed gate → INCONCLUSIVE, never PR
   const r = region(b, 'credential-egress');
   assert.equal(r.status, 'INCONCLUSIVE');
   assert.match(r.reason, /assumed/);
+});
+
+test('aws s3api labels: exfil verbs flagged, benign reads stay benign, prefix grant is worst-case', () => {
+  const L = loadLabels();
+  const eff = (cmd) => [...labelEffects('Bash', cmd, L).effects].sort().join('+');
+  // put/upload read a local --body and ship it: egress + sensitive
+  assert.equal(eff('aws s3api put-object --bucket b --body ./f'), 'egress+sensitive');
+  assert.equal(eff('aws s3api upload-part --body ./f'), 'egress+sensitive');
+  // get-object can pull a secret object from a bucket to disk: sensitive + untrusted
+  assert.equal(eff('aws s3api get-object --bucket b out'), 'sensitive+untrusted');
+  // server-side / no-data verbs are NOT exfil — must stay benign
+  assert.equal(eff('aws s3api copy-object --bucket b'), '');
+  assert.equal(eff('aws s3api create-multipart-upload'), '');
+  assert.equal(eff('aws s3api get-bucket-website --bucket b'), '');
+  assert.equal(eff('aws s3api list-buckets'), '');
+  // a bare prefix grant (Bash(aws s3api:*)) permits put-object — worst-case, not benign
+  assert.equal(eff('aws s3api'), 'egress+sensitive+untrusted');
 });
 
 test('deterministic: same repo ⇒ byte-identical JSON', () => {

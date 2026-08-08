@@ -37,7 +37,7 @@
       "\\bscp\\b", "\\bsftp\\b", "\\brsync\\b", "\\bssh\\b", "\\bftp\\b",
       "git\\s+push", "npm\\s+publish", "yarn\\s+publish", "\\bmail\\b", "\\bsendmail\\b",
       ">\\s*/dev/tcp", "\\bhttpie\\b", "\\bhttp\\b\\s",
-      "\\baws\\s+s3\\b", "\\baws\\s+s3api\\s+(put-object|copy-object|upload-part|create-multipart-upload)\\b",
+      "\\baws\\s+s3\\b", "\\baws\\s+s3api\\s+(put-object|upload-part)\\b", "\\baws\\s+s3api\\s*(\\*|$)",
       "\\baws\\s+sns\\s+publish\\b", "\\baws\\s+sqs\\s+send-message\\b", "\\baws\\s+lambda\\s+invoke\\b",
       "Invoke-WebRequest", "\\biwr\\b", "Invoke-RestMethod", "\\birm\\b", "Start-BitsTransfer", "Send-MailMessage"
     ],
@@ -51,14 +51,14 @@
       "aws\\s+configure\\s+get", "gcloud\\s+auth", "security\\s+find-generic-password",
       "kubectl\\s+get\\s+secret", "vault\\s+read", "op\\s+read", "op\\s+item\\s+get",
       "\\baws\\s+configure\\b", "\\baws\\s+secretsmanager\\b", "\\baws\\s+ssm\\s+get-parameter", "\\baws\\s+sts\\b", "\\baws\\s+ecr\\s+get-login", "\\baws\\s+s3\\b",
-      "\\baws\\s+s3api\\s+(put-object|copy-object|upload-part|create-multipart-upload)\\b",
+      "\\baws\\s+s3api\\s+(put-object|upload-part|get-object)\\b", "\\baws\\s+s3api\\s*(\\*|$)",
       "Get-Credential", "ConvertFrom-SecureString", "\\bGet-Secret\\b", "Import-Clixml"
     ],
     "untrusted": [
       "\\bcurl\\b", "\\bwget\\b", "git\\s+clone", "pip\\s+install", "npm\\s+install",
       "npx\\b", "\\bgh\\b\\s+.*(view|read)", "\\bhttpie\\b",
       "Invoke-WebRequest", "\\biwr\\b", "Invoke-RestMethod", "\\birm\\b",
-      "\\baws\\s+s3api\\s+get-object\\b"
+      "\\baws\\s+s3api\\s+get-object\\b", "\\baws\\s+s3api\\s*(\\*|$)"
     ]
   },
   "//bashArbitraryExecution": "Commands whose prefix is NOT a security boundary: they run caller-chosen code, so bounding them by a Bash(prefix:*) rule proves nothing. `npm run test` executes whatever package.json says (and prefix-matches `npm run test:whatever`); `make`, `python`, `bash -c`, `xargs`, `find -exec`, `git -c core.pager=…` all execute arbitrary code. Any match here is declared WORST-CASE (untrusted ∧ sensitive ∧ egress) — the single largest source of false-PROOF if omitted.",

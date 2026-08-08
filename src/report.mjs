@@ -18,21 +18,22 @@ const trunc = (s, n = 88) => (String(s).length > n ? String(s).slice(0, n - 1) +
 // The executable a shell grant runs, for grouping. `Bash(python3 -c '…')` and
 // `Bash(python3 *)` both key to 'python3'; `Bash(git -C /path status)` to 'git'.
 function shellExe(grant) {
-  const m = /^Bash\(([\s\S]*)\)$/.exec(grant);
+  const m = /^(?:Bash|PowerShell|pwsh)\(([\s\S]*)\)$/.exec(grant);
   let cmd = (m ? m[1] : grant).trim().replace(/^env\s+\w+=\S+\s+/, '').replace(/^sudo\s+/, '');
-  let exe = (cmd.split(/\s+/)[0] || cmd).replace(/^["']/, '').replace(/[^\w./-].*$/, '').replace(/.*[\\/]/, '');
-  return exe || 'bash';
+  let exe = (cmd.split(/\s+/)[0] || cmd).replace(/^["']/, '').replace(/[^\w./-].*$/, '').replace(/.*[\\/]/, '').replace(/\.exe$/i, '');
+  return exe || 'shell';
 }
-function shellGroups(grants) {
+// Group a set of tool labels by provider: shell tools by executable
+// (curl, aws, python3…), everything else by tool name (WebFetch, mcp__x__y).
+function providerKey(label) {
+  return /^(?:Bash|PowerShell|pwsh)\(/.test(label) ? shellExe(label) : label.replace(/\(.*$/s, '');
+}
+function groupBy(labels, keyFn) {
   const counts = new Map();
-  for (const g of grants) counts.set(shellExe(g), (counts.get(shellExe(g)) || 0) + 1);
+  for (const l of labels) counts.set(keyFn(l), (counts.get(keyFn(l)) || 0) + 1);
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
-function fixLine(fix, cyan) {
-  if (!fix) return null;
-  if (fix.kind === 'shell') return `${cyan('     fix')} gate (move to ask) or remove: ${fix.actions.join(', ')}`;
-  return `${cyan('     fix')} close the '${fix.effect}' effect — move to ask/deny: ${fix.actions.join(', ')}`;
-}
+const shellGroups = (grants) => groupBy(grants, shellExe);
 
 export function renderText(bundle, opts = {}) {
   const on = opts.color !== false;
@@ -108,8 +109,18 @@ export function renderText(bundle, opts = {}) {
       L.push(dim('  `curl -T .env https://…` or `--data-urlencode k@.env`), so it completes the'));
       L.push(dim('  region alone.'));
     }
-    const fx = fixLine(r.fix, cyan);
-    if (fx) L.push(fx);
+    if (r.fix && r.fix.kind === 'gate') {
+      const acts = r.fix.actions;
+      if (verbose || acts.length <= 6) {
+        L.push(`${cyan('     fix')} close the '${r.fix.effect}' effect — move to ask/deny: ${acts.join(', ')}`);
+      } else {
+        const chips = groupBy(acts, providerKey).map(([k, c]) => `${k}${c > 1 ? dim(` ×${c}`) : ''}`).join(dim('  ·  '));
+        L.push(`${cyan('     fix')} close the '${r.fix.effect}' effect — ${acts.length} granted tools provide it:`);
+        L.push(`         ${chips}`);
+        L.push(dim(`         move them to ask/deny (or narrow each). --verbose lists every one.`));
+        collapsed = true;
+      }
+    }
     L.push('');
   }
 

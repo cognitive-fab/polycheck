@@ -4,3 +4,6 @@ node_modules/
 # Runtime artifacts from the experiments.
 experiments/**/LEAKED.txt
 experiments/**/RECEIVED.txt
+
+# personal follow-up notes — local only, never published
+todo/

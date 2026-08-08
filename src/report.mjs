@@ -13,6 +13,21 @@ function paint(on) {
 }
 
 function effJoin(list) { return list.join(' ∧ '); }
+const trunc = (s, n = 88) => (String(s).length > n ? String(s).slice(0, n - 1) + '…' : String(s));
+
+// The executable a shell grant runs, for grouping. `Bash(python3 -c '…')` and
+// `Bash(python3 *)` both key to 'python3'; `Bash(git -C /path status)` to 'git'.
+function shellExe(grant) {
+  const m = /^Bash\(([\s\S]*)\)$/.exec(grant);
+  let cmd = (m ? m[1] : grant).trim().replace(/^env\s+\w+=\S+\s+/, '').replace(/^sudo\s+/, '');
+  let exe = (cmd.split(/\s+/)[0] || cmd).replace(/^["']/, '').replace(/[^\w./-].*$/, '').replace(/.*[\\/]/, '');
+  return exe || 'bash';
+}
+function shellGroups(grants) {
+  const counts = new Map();
+  for (const g of grants) counts.set(shellExe(g), (counts.get(shellExe(g)) || 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
 function fixLine(fix, cyan) {
   if (!fix) return null;
   if (fix.kind === 'shell') return `${cyan('     fix')} gate (move to ask) or remove: ${fix.actions.join(', ')}`;
@@ -50,13 +65,17 @@ export function renderText(bundle, opts = {}) {
 
   // SHELL-EQUIVALENT — reported once (the same grant makes every region trivial).
   if (check.shellGrants && check.shellGrants.length) {
-    L.push(red(bold('SHELL-EQUIVALENT')) + dim('  — these grants run caller-chosen code:'));
-    for (const a of check.shellGrants) L.push(`    ${red('•')} ${a}`);
-    L.push(dim('  A command prefix is not a security boundary: `npm run`, `node`, `python`,'));
-    L.push(dim('  `make`, `bash -c` all execute whatever they are handed. Any one is equivalent'));
-    L.push(dim('  to unrestricted Bash, so every forbidden region is trivially reachable — the'));
-    L.push(dim('  composition question is moot until these are gated.'));
-    L.push(cyan('     fix') + ` gate (move to ask) or remove: ${check.shellGrants.join(', ')}`);
+    const grants = check.shellGrants;
+    const groups = shellGroups(grants);
+    const n = grants.length;
+    L.push(red(bold('SHELL-EQUIVALENT')) + dim(`  — ${n} granted command${n > 1 ? 's' : ''} run caller-chosen code, by executable:`));
+    // grouped counts, wrapped to a few per line so it stays readable
+    const chips = groups.map(([exe, c]) => `${exe}${c > 1 ? dim(` ×${c}`) : ''}`);
+    for (let i = 0; i < chips.length; i += 6) L.push('    ' + chips.slice(i, i + 6).join(dim('  ·  ')));
+    L.push(dim('  A command prefix is not a security boundary: npm run, node, python, bash -c'));
+    L.push(dim('  all execute whatever they are handed — any one is equivalent to unrestricted'));
+    L.push(dim('  Bash, so every forbidden region is trivially reachable.'));
+    L.push(cyan('     fix') + dim(`  move these behind 'ask'/'deny', or narrow each to fixed arguments (\`--json\` lists them all).`));
     L.push('');
   }
 
@@ -130,7 +149,12 @@ export function renderText(bundle, opts = {}) {
   L.push(`    regardless of what the classifier scores — that is the point of a static proof.`);
   L.push(`  ${cyan('•')} ${bold('the labeler is a trust obligation, not a proof.')} polycheck proves the`);
   L.push(`    policy over the labels; a mislabeled tool is a hole it cannot see.`);
-  for (const a of model.assumptions.slice(0, 12)) L.push(dim(`      · ${a}`));
+  // Drop ARBITRARY-EXECUTION / WORST-CASE notes here — they just restate the
+  // SHELL-EQUIVALENT section. Keep the ones that reveal blind spots (unlabeled
+  // tools, MCP assumptions, commands matched as benign — those hint at gaps).
+  const notes = model.assumptions.filter((a) => !/^(ARBITRARY-EXECUTION|WORST-CASE)/.test(a));
+  for (const a of notes.slice(0, 8)) L.push(dim(`      · ${trunc(a, 128)}`));
+  if (notes.length > 8) L.push(dim(`      · … and ${notes.length - 8} more (\`--json\` for all)`));
   L.push(`  ${cyan('•')} ${bold('confinement is out of scope.')} Only tool-mediated actions are`);
   L.push(`    modeled; anything the agent does outside the tool interface is not.`);
   L.push(`  ${cyan('•')} ${bold('subagent taint is not propagated (v1).')} Task/subagent spawns are a known`);

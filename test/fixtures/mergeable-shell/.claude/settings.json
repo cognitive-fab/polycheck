@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node bin/build.mjs)",
+      "Bash(node --version)",
+      "Bash(sqlite3 app.db .tables)",
+      "Bash(sqlite3 app.db .schema)"
+    ]
+  }
+}

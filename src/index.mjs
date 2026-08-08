@@ -9,12 +9,13 @@ import { scanRepo } from './scan.mjs';
 import { loadLabels, DEFAULT_LABELS } from './label.mjs';
 import { buildModel } from './model.mjs';
 import { modelCheck } from './check.mjs';
+import { tidyPolicy } from './tidy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_REGIONS = join(HERE, '..', 'data', 'regions.json');
 const VERSION = JSON.parse(readFileSync(join(HERE, '..', 'package.json'), 'utf8')).version;
 
-export { scanRepo, loadLabels, buildModel, modelCheck, DEFAULT_LABELS };
+export { scanRepo, loadLabels, buildModel, modelCheck, tidyPolicy, DEFAULT_LABELS };
 
 export function analyze(root, { labelsPath = DEFAULT_LABELS, regionsPath = DEFAULT_REGIONS, assumeDefaults = true } = {}) {
   const scan = scanRepo(root);
@@ -22,5 +23,7 @@ export function analyze(root, { labelsPath = DEFAULT_LABELS, regionsPath = DEFAU
   const regions = JSON.parse(readFileSync(regionsPath, 'utf8'));
   const model = buildModel(scan, labels, regions, { assumeDefaults });
   const check = modelCheck(model);
-  return { version: VERSION, scan, labels, model, check };
+  // assumeDefaults is carried on the bundle so a re-analysis (tidy's edit proof)
+  // reproduces the same modeling choices it is comparing against.
+  return { version: VERSION, scan, labels, model, check, assumeDefaults };
 }

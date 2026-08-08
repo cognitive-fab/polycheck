@@ -2,6 +2,8 @@
 // polycheck CLI — point it at a repo, get a proof or a witness.
 //
 //   polycheck [path]            check a repo's .claude policy (default: cwd)
+//   polycheck . --tidy          grant hygiene — dedup/prune/merge, with a proof
+//   polycheck . --write         apply the tidy edit, verified from disk after writing
 //   polycheck . --json          machine-readable output
 //   polycheck . --md            a fenced block ready to paste into an issue
 //   polycheck . --no-assume-defaults   strict: only explicitly-granted permissions
@@ -11,16 +13,20 @@
 //              · 2 inconclusive (a required effect has no granted tool) · 3 usage/no-policy
 // Deterministic, offline, zero dependencies.
 
-import { analyze, DEFAULT_LABELS, DEFAULT_REGIONS } from '../src/index.mjs';
+import { analyze, tidyPolicy, DEFAULT_LABELS, DEFAULT_REGIONS } from '../src/index.mjs';
 import { renderText, renderMarkdown, renderJson } from '../src/report.mjs';
+import { renderTidyText, renderTidyJson } from '../src/tidy.mjs';
+import { planWrite, applyWrite, renderWriteText } from '../src/write.mjs';
 
 function parseArgs(argv) {
-  const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true, verbose: false };
+  const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true, verbose: false, tidy: false, write: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') opts.format = 'json';
     else if (a === '--md' || a === '--markdown') opts.format = 'md';
     else if (a === '--verbose' || a === '-v') opts.verbose = true;
+    else if (a === '--tidy') opts.tidy = true;
+    else if (a === '--write') { opts.tidy = true; opts.write = true; }
     else if (a === '--no-color') opts.color = false;
     else if (a === '--color') opts.color = true;
     else if (a === '--assume-defaults') opts.assumeDefaults = true;
@@ -43,6 +49,10 @@ allowed tool calls that reaches credential egress with zero gates crossed).
 
 Usage:
   polycheck [path]                 check a repo (default: current directory)
+  polycheck . --tidy               grant hygiene: which rules are redundant/dead,
+                                   with a proof of what removing them changes
+  polycheck . --write              apply that edit (line surgery; re-verified from
+                                   disk and rolled back if it does not match)
   polycheck . --verbose            expand grouped grants + every assumption (human-readable)
   polycheck . --json | --md        machine output / paste-ready block
   polycheck . --no-assume-defaults strict: model only explicitly-granted permissions
@@ -50,6 +60,8 @@ Usage:
   polycheck . --regions <file>     override the forbidden-region pack
 
 Exit: 0 proof · 1 bypass (incl. shell-equivalent) · 2 inconclusive · 3 usage/no-policy
+      --tidy is advisory and always exits 0 — it never gates a build.
+      --write exits 4 if it refused or rolled back (nothing changed on disk).
 
 The hazard is a predicate over accumulated session state, so a per-action check —
 including the auto-mode classifier — is structurally blind to it. $0, offline,
@@ -76,6 +88,41 @@ function main() {
   }
 
   const color = opts.color ?? (process.stdout.isTTY && !process.env.NO_COLOR);
+
+  // --tidy is a hygiene pass, not the security check: it reports which grants
+  // can go and PROVES what removing them does to the blast radius. It never
+  // writes and never gates — a tight ruleset and a safe one are different
+  // questions, so it always exits 0 and leaves the verdict to the normal run.
+  if (opts.tidy) {
+    const t = tidyPolicy(bundle);
+    // --write applies only the proved, non-⚠ removals, then re-verifies from
+    // disk and rolls back if the result is not what was proved.
+    const plan = opts.write ? planWrite(bundle, t) : null;
+    const result = plan ? applyWrite(bundle, plan) : null;
+
+    if (opts.format === 'json') {
+      const j = JSON.parse(renderTidyJson(bundle, t));
+      if (plan) {
+        j.write = {
+          applied: !!result?.ok,
+          reason: result?.ok ? null : result?.reason ?? null,
+          files: plan.edits.map((e) => ({ path: e.path, removed: e.rules.map((f) => f.raw) })),
+          heldBack: plan.excluded.map((f) => ({ rule: f.raw, coveredBy: f.coveredBy })),
+          refused: plan.refusals,
+        };
+      }
+      process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+    } else {
+      const useColor = opts.format === 'md' ? false : color;
+      let text = renderTidyText(bundle, t, { color: useColor, verbose: opts.verbose, willWrite: !!plan });
+      if (plan) text += '\n' + renderWriteText(plan, result, { color: useColor });
+      process.stdout.write(opts.format === 'md' ? '```\n' + text + '\n```\n' : text + '\n');
+    }
+    // A refused or rolled-back write is a failure the caller must see; a clean
+    // dry run and a clean write are both success.
+    process.exit(plan && !result?.ok && plan.targets.length ? 4 : 0);
+  }
+
   if (opts.format === 'json') process.stdout.write(renderJson(bundle) + '\n');
   else if (opts.format === 'md') process.stdout.write(renderMarkdown(bundle, { verbose: opts.verbose }));
   else process.stdout.write(renderText(bundle, { color, verbose: opts.verbose }) + '\n');

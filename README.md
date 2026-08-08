@@ -123,6 +123,10 @@ compositions. Every finding ends with the minimal edit that closes it.
 
 ```
 polycheck [path]                 check a repo (default: current directory)
+polycheck . --tidy               grant hygiene: which rules are redundant or dead,
+                                 with a proof of what removing them changes
+polycheck . --write              apply that edit — line surgery, then re-verified
+                                 from disk and rolled back if it does not match
 polycheck . --verbose            expand grouped grants + every assumption (human-readable)
 polycheck . --json               machine-readable output
 polycheck . --md                 a fenced block ready to paste into an issue/PR
@@ -134,6 +138,88 @@ polycheck . --no-assume-defaults strict: model only explicitly-granted perms
 By default polycheck models Claude Code's auto-allowed read-only tools (`Read`,
 `Grep`) as ungated, so the common case (an egress tool but no explicit `Read`)
 isn't a false pass; `--no-assume-defaults` gives the strict, explicit-only view.
+
+### `--tidy` — read the running total you never agreed to
+
+A permission list grows one yes-in-the-moment at a time. Nobody ever reads the
+accumulated result, so it ends up a mix of rules that matter, rules another rule
+already covers, and rules pinned to a session that will never recur. `--tidy`
+sorts every rule into four buckets:
+
+- **KEEP** — earning its place.
+- **DEDUP** — a broader rule in the same bucket already admits it
+  (`Bash(python3 -m pip install x)` under `Bash(python3:*)`), or it is listed twice.
+- **PRUNE** — an exact-match rule that *cannot fire again*, and says why: a path
+  that isn't on this machine, backslash-escaped parens from a mangled JSON
+  round-trip, a captured `$?` echo, a hard-coded host.
+- **MERGE** — several one-shots invoking the same executable that one prefix rule
+  would replace. Offered, never applied: a prefix rule admits commands you have
+  not run yet, so this one is a **widening** and needs your yes. And when the
+  executable is an arbitrary-execution wrapper, the merge is labelled **DO NOT
+  TAKE THIS ONE** — collapsing five exact `node …` commands into `Bash(node:*)`
+  is a shell grant, and offering that as tidy-up is the mistake this tool exists
+  to catch.
+
+The part that makes this polycheck's job rather than a text linter's is that the
+edit comes with a **proof**. The state machine is monotone and unconditional, so
+the maximal reachable state is exactly the union of the available actions'
+effects — which means two rulesets are effect-equivalent iff that union agrees
+per gate class *and* every region verdict agrees. `--tidy` re-runs the whole
+analysis over the proposed ruleset and reports the direction:
+
+```
+PROOF OF THE EDIT
+  ✓ removing 7 rules is effect-preserving.
+    Reachable effects are identical before and after, per gate class
+    (ungated: egress, sensitive, untrusted), the shell-grant set is unchanged,
+    and every region verdict is unchanged. The blast radius does not move.
+```
+
+**And it refuses to flatter you.** If deleting a subsumed line makes the *model*
+smaller while the covering rule still admits the same command at runtime, the
+report got better and nothing got safer — the one way a hygiene pass can
+actively mislead. Those lines are flagged `⚠`, with the fix pointed at the
+covering rule instead of the line.
+
+**`--write` applies it.** Three properties make that safe enough to run without
+reading the diff first:
+
+1. **Line surgery, not reserialisation.** A settings file is *your* file — key
+   order, indentation, blank lines and the `"//"` note at the top all survive,
+   because the only thing that changes is that N lines are gone. A file that
+   isn't in the conventional one-entry-per-line shape is **refused**, not
+   guessed at, and a refusal anywhere means no file is written at all.
+2. **The `⚠` rules are never applied.** They are excluded by construction:
+   applying one would make the report look better while nothing got safer, which
+   is the single edit this tool must not make quietly. They stay in your file,
+   with the fix pointed at the covering rule.
+3. **Verified from disk, then rolled back.** After writing, the repo is
+   re-scanned and re-checked *from scratch* — not from the plan. If the
+   behavioural signature isn't the one that was proved, every file is restored
+   to its original bytes and the run exits `4`. The proof is checked against
+   reality.
+
+```
+WRITE
+  .claude/settings.json
+    − Bash(git status:*)                              [allow] duplicate
+    − Bash(cp /tmp/gone-4a91b/x.txt /tmp/gone-4a91b/y.txt)  [allow] one-shot, stale
+
+  ⚠ held back — 1 rule whose removal would shrink the report, not the grant:
+      Bash(python3 -m pip install requests -q)
+      └ Bash(python3:*) still admits this command at runtime — narrow it instead.
+
+  ✓ 2 rules removed from 1 file, effect-preserving.
+```
+
+Deliberate limits: subsumption is inferred for shell tools only
+(`Bash`/`PowerShell`/`pwsh`), where a specifier is a command prefix with known
+matching — `Read`/`Edit` globs are left alone, because a wrong deletion there is
+silent and a cleanup you have to re-check is worthless. Staleness evidence is
+machine-local. And tidy is **not** the security check: an effect-preserving edit
+preserves a `BYPASS` exactly as faithfully as a `PROOF`. Without `--write` it is
+a dry run and always exits `0`; `--write` exits `4` only if it refused or rolled
+back, in which case nothing on disk changed.
 
 ### A declared MCP server holds you at INCONCLUSIVE — and that is deliberate
 
@@ -164,8 +250,9 @@ That policy reaches `PROOF`. If a name is misleading — a `create_*` tool that 
 actually read-only — correct it in `--labels` rather than leaving it worst-case.
 
 Exit codes: `0` proof · `1` bypassable (incl. shell-equivalent) · `2`
-inconclusive · `3` usage error or no `.claude` policy at the path. A wrong path
-is an error, never a report. CI-friendly: fail the build on `1`.
+inconclusive · `3` usage error or no `.claude` policy at the path · `4` a
+`--write` that refused or rolled back. A wrong path is an error, never a report.
+CI-friendly: fail the build on `1`.
 
 ---
 
@@ -206,6 +293,13 @@ is an error, never a report. CI-friendly: fail the build on `1`.
   shortest gate-free path (a **witness**), or decide whether every path crosses a
   gate (**proof**) or a required effect has no provider at all (**vacuous**,
   reported loudly rather than as clean).
+- **`src/tidy.mjs`** — the `--tidy` hygiene pass: dedup / prune / merge, plus
+  `proveEdit`, which re-runs the analysis over the proposed ruleset and
+  classifies the edit as effect-preserving, narrowing, or widening.
+- **`src/write.mjs`** — the only part of polycheck that mutates anything:
+  line-level removal that preserves formatting and comments, a refusal for any
+  file shape it cannot reason about, and a verify-from-disk-then-roll-back step
+  so what lands is exactly what was proved.
 - **`src/report.mjs`** — render the witness/proof and, always, *what the check
   did not establish*.
 

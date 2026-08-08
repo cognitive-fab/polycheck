@@ -1,6 +1,9 @@
 node_modules/
 # Per-developer permission grants — never committed (they would fail the check).
 .claude/settings.local.json
+# ...but the test fixtures need theirs: several checks are about how a local file
+# interacts with the shared one, and they cannot run if it is ignored.
+!test/fixtures/**/settings.local.json
 # Runtime artifacts from the experiments.
 experiments/**/LEAKED.txt
 experiments/**/RECEIVED.txt

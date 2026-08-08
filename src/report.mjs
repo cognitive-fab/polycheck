@@ -111,8 +111,12 @@ export function renderText(bundle, opts = {}) {
     }
     if (r.fix && r.fix.kind === 'gate') {
       const acts = r.fix.actions;
-      if (verbose || acts.length <= 6) {
+      if (acts.length <= 6) {
         L.push(`${cyan('     fix')} close the '${r.fix.effect}' effect — move to ask/deny: ${acts.join(', ')}`);
+      } else if (verbose) {
+        // full, but one tool per line so a 60-item list stays readable
+        L.push(`${cyan('     fix')} close the '${r.fix.effect}' effect — move these ${acts.length} tools to ask/deny:`);
+        for (const a of acts) L.push(dim('         · ') + a);
       } else {
         const chips = groupBy(acts, providerKey).map(([k, c]) => `${k}${c > 1 ? dim(` ×${c}`) : ''}`).join(dim('  ·  '));
         L.push(`${cyan('     fix')} close the '${r.fix.effect}' effect — ${acts.length} granted tools provide it:`);

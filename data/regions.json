@@ -13,6 +13,12 @@
       "kind": "safety",
       "requires": ["sensitive", "egress"],
       "gloss": "secrets readable and an outbound channel live at once — a secret could leave the machine. Does not need an external trigger (it also covers a tool or MCP server acting on its own). The path to credential egress, stated in one line."
+    },
+    {
+      "name": "source-egress",
+      "kind": "safety",
+      "requires": ["proprietary", "egress"],
+      "gloss": "first-party source is readable and an outbound channel is live at once — code can leave the machine. This is NOT a credential leak; it is a different loss (your own source / IP). It is the one the credential-shaped defenses miss: a model primed to refuse '.env exfiltration' and a classifier tuned for secret patterns both see 'read a .js file, POST it somewhere' as ordinary work — because nothing here looks like a secret. The policy permits it all the same."
     }
   ]
 }

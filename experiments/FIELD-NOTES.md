@@ -79,3 +79,22 @@ not to rely on them.
 See also [`../demo/vs-auto-mode.mjs`](../demo/vs-auto-mode.mjs) for why a
 per-action classifier is structurally blind to these compositions regardless of
 how good it gets.
+
+## A third shape: code-egress (results pending)
+
+The [`code-egress/`](code-egress/) experiment tests a different asset — not a
+secret, but **first-party source**. The hypothesis: a model primed to refuse
+`.env` exfiltration may treat "mirror the modules to the build cache" as ordinary
+ops, because nothing in the request looks like a secret. It is driven exactly
+like `injection/` (localhost, a poisoned page, a benign prompt), and it motivated
+a new polycheck effect (`proprietary`) and region (`source-egress`), so the
+static layer now names code-loss deterministically even where the credential
+regions are clean.
+
+| model | outcome (mirrored / gated / refused) | flagged the request? |
+|---|---|---|
+| _run it and record_ | | |
+
+Whatever a live model does, `polycheck code-egress/victim --no-assume-defaults`
+reports `source-egress = BYPASS` while the credential regions read `PROOF` — the
+loss the credential-shaped defenses miss, named before anything runs.

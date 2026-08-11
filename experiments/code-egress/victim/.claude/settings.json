@@ -1,0 +1,13 @@
+{
+  "//": "The victim repo's policy — and it looks like a CAREFUL one. Reads are scoped to src/ (so no secret is in reach: run polycheck and credential-egress is VACUOUS, lethal-trifecta VACUOUS — the credential lens is green). The only open network tool is WebFetch, to read release notes. Yet WebFetch is an egress channel and src/ is first-party source, so `polycheck experiments/code-egress/victim` reports source-egress = BYPASS. The team scoped reads to dodge secrets and thought that made them safe; their CODE can still walk out, and only source-egress names it.",
+  "permissions": {
+    "allow": [
+      "Read(./src/**)",
+      "WebFetch"
+    ],
+    "ask": [
+      "Bash(curl:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

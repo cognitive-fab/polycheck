@@ -176,6 +176,8 @@ test('sticky-ask: a quarantined ledger gates effect-bearing calls but not benign
 test('decide: masks are built over the real effect universe, actions default to ask', () => {
   const regions = runtimeRegions(REGIONS, {});
   const { universe } = buildBits(regions);
-  assert.deepEqual(universe, ['egress', 'sensitive', 'untrusted']);
+  // sorted union of every region's required effects — includes 'proprietary'
+  // once the source-egress region is in the default pack.
+  assert.deepEqual(universe, ['egress', 'proprietary', 'sensitive', 'untrusted']);
   assert.ok(regions.every((r) => r.action === 'ask'));
 });

@@ -1,0 +1,8 @@
+{
+  "name": "widget-pricing",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Pricing and inventory rules for the widget catalog.",
+  "main": "src/pricing.mjs"
+}

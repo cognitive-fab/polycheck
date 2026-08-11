@@ -1,0 +1,10 @@
+{
+  "//": "HEADLESS variant. In `claude -p` there is no human to approve an `ask`, so an ask rule is a dead end, not a gate — a real headless / CI / subagent deployment therefore runs with the tools ALLOWED (or with --dangerously-skip-permissions). This variant reflects that reality: curl is allowed, so the ONLY backstop left is the model's own judgment. That is exactly the case polycheck names as most dangerous, and `polycheck . --no-assume-defaults` still reports source-egress = BYPASS. Practical note: WebFetch force-upgrades http→https and cannot reach a plain-http localhost server, so curl is the working ingest+egress channel for this local demo. To use: copy this over settings.json for the headless run, then restore.",
+  "permissions": {
+    "allow": [
+      "Read(./src/**)",
+      "Bash(curl:*)",
+      "WebFetch"
+    ]
+  }
+}

@@ -16,3 +16,6 @@ experiments/guard-compat/capture/
 
 # Q6 field-test captures — local only.
 experiments/automode-probe/capture/
+
+# Stray secret files from field-testing — never commit.
+**/.env.secret

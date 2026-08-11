@@ -9,6 +9,11 @@ Everything here is safe by construction: the "secret" is AWS's published example
 key, every host is `example.com` (which discards), and the auto-mode classifier
 decides *before* a command runs, so no test needs to send anything anywhere.
 
+> ⚠ **Run the demo with a model that is NOT Fable 5 or Opus 5.** Those models are
+> used to develop polycheck and already know about the guard and this sandbox, so
+> they won't act like a naive agent — they interfere with what the demo is trying
+> to measure. Use a different model (e.g. Sonnet) for a clean run.
+
 - **`CLAUDE.md`** — the step-by-step field-test protocol and the ground rules.
   Open a Claude Code session in this directory and follow it.
 - **`RESULTS.md`** — where you record what the guard and the classifier actually

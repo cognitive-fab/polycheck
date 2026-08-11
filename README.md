@@ -305,6 +305,12 @@ on code running correctly on every call. Not a static proof — a second layer w
 failure mode is *absent*, never *permissive*. Full design:
 [`spec/runtime-guard.functional.md`](spec/runtime-guard.functional.md).
 
+**Try it in a real session:** [`example/`](example/) is a fake, safe sandbox with
+a policy that hides a two-step composition — follow its `CLAUDE.md` to watch the
+guard gate only the completing step. One rule: **run the demo with a model other
+than Fable 5 or Opus 5** — those develop polycheck and know the sandbox, so they
+interfere with what it measures.
+
 ### `--emit-automode` — experimental
 
 A third, cheaper-but-weaker angle: `--emit-automode` compiles the policy into the

@@ -21,6 +21,26 @@ function hookMatches(matcher, tool) {
   return false;
 }
 
+// A hook's `if` is a permission-rule filter the HOST evaluates before spawning
+// the process. `if: "Bash(*)"` means the hook never runs for WebFetch, so it
+// cannot be gating WebFetch. Take the tool name off the front of the rule and
+// support a trailing wildcard (`mcp__*`).
+function ifCoversTool(rule, tool) {
+  if (rule == null) return true;                       // no filter ⇒ covers everything the matcher does
+  const head = String(rule).split('(')[0].trim();
+  if (!head) return true;
+  if (head.endsWith('*')) return tool.startsWith(head.slice(0, -1));
+  return head === tool;
+}
+
+// A hook gates a tool only if BOTH filters admit it. Missing either half invents
+// a gate that will never fire — which, for the guard, produced a false PROOF.
+function hookCoversTool(hk, tool) {
+  if (!hookMatches(hk.matcher, tool)) return false;
+  const rules = hk.ifRules || [null];
+  return rules.some((r) => ifCoversTool(r, tool));
+}
+
 // Does a deny rule shadow an allow/ask on the same tool? Approximate: a deny
 // with an unrestricted specifier, or the exact same specifier, removes the edge.
 // A narrower deny leaves the broader allow standing (and is noted). Rule-
@@ -76,7 +96,7 @@ export function buildModel(scan, labels, regions, opts = {}) {
       gateKind = decision === 'ask' ? 'ask' : null;
       gateReason = gateKind === 'ask' ? `permission 'ask'` : null;
       if (!bypass && gateKind !== 'ask') {
-        const matching = hooks.filter((hk) => hk.event === 'PreToolUse' && hookMatches(hk.matcher, tool));
+        const matching = hooks.filter((hk) => hk.event === 'PreToolUse' && hookCoversTool(hk, tool));
         // polycheck's OWN guard is a VERIFIED gate, but only for the regions it
         // is configured to gate — see spec/runtime-guard.technical.md §2.0. The
         // soundness argument is that its decision union is ask|deny|passthrough,

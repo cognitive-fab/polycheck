@@ -48,20 +48,29 @@ const BUCKETS = [
 // Two guardrails, both deliberate:
 //   G-a  the claim is scoped to the regions the guard is CONFIGURED to gate. No
 //        readable config ⇒ not a guard ⇒ ordinary unverified hook.
-//   G-b  recognition is on the command shape. A hand-written hook that merely
-//        resembles polycheck's does not inherit the verdict — but neither does a
-//        real guard whose config we cannot read, which is the safe direction.
-//
-// Returns the region-name array it gates, or null.
+//   G-b  recognition is on the command shape, which is a WEAK check: any hook
+//        whose command string mentions polycheck-guard is accepted. It stops an
+//        unrelated script from inheriting the verdict; it does not stop a
+//        wrapper, a stale path, or a renamed copy. Stated plainly rather than
+//        overclaimed — see the note in the report.
 const GUARD_CMD = /polycheck[-\s]guard(\.mjs)?\b/i;
+
+// Which tools does a hook entry actually cover? TWO filters apply, and missing
+// either produces a gate that does not exist:
+//   matcher  — the tool-name pattern on the entry
+//   if       — a permission-rule filter on the individual hook, evaluated by the
+//              host BEFORE the process spawns. A hook with `if: "Bash(*)"` never
+//              runs for WebFetch, so it cannot be gating it.
+// Ignoring `if` was a real bug: `guard init` writes if-filtered entries for
+// latency, so every tool outside the filter set was being certified as gated by
+// a hook that would never fire for it — a false PROOF.
+function hookFilters(entry) {
+  const hooks = entry?.hooks || [];
+  return hooks.length ? hooks.map((h) => h?.if ?? null) : [null];
+}
 
 function guardHookOf(entry, guardConfig) {
   if (!guardConfig) return null;                    // G-a: unconfigured ⇒ not a gate
-  if (entry?.matcher != null && entry.matcher !== '*' && entry.matcher !== '') {
-    // A guard wired to only some tools does not gate the others; refusing to
-    // reason about the partial case is safer than modelling it wrong.
-    return null;
-  }
   for (const h of entry?.hooks || []) {
     const text = [h?.command, ...(h?.args || [])].filter(Boolean).join(' ');
     if (GUARD_CMD.test(text)) return guardConfig.regions;
@@ -131,7 +140,12 @@ export function scanRepo(root) {
         if (!Array.isArray(entries)) continue;
         for (const e of entries) {
           const guard = guardHookOf(e, guardConfig);
-          hooks.push({ event, matcher: e?.matcher ?? '*', source: kind, kind: guard ? 'guard' : 'hook', guardRegions: guard || null });
+          hooks.push({
+            event, matcher: e?.matcher ?? '*', source: kind,
+            ifRules: hookFilters(e),
+            kind: guard ? 'guard' : 'hook',
+            guardRegions: guard || null,
+          });
         }
       }
     }

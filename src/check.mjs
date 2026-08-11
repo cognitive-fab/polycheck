@@ -134,6 +134,8 @@ export function modelCheck(model) {
     ? { grants: shellByReason['writable-code'], writers: model.ungatedWriters || [] }
     : null;
 
+  const exploreCache = new Map();
+
   const results = model.regions.map((region) => {
     const reqMask = region.requires.reduce((m, e) => m | (bit[e] ?? 0), 0);
 
@@ -156,10 +158,14 @@ export function modelCheck(model) {
     // gate — a PreToolUse hook (logic we cannot read), an 'assumed' MCP prompt
     // polycheck synthesized, or a polycheck guard NOT configured for this region?
     // Then it is not a proof; we cannot confirm it blocks.
-    const exUnverified = explore(
-      model.actions.filter((a) => a.gateKind == null || isUnverifiedFor(a, region)),
-      bit,
-    );
+    // Region-dependent, so it cannot be hoisted out of the loop — but two
+    // regions that admit the same action set share an exploration. Keyed on the
+    // included-index signature so the BFS runs once per DISTINCT set rather than
+    // once per region.
+    const passable = model.actions.filter((a) => a.gateKind == null || isUnverifiedFor(a, region));
+    const key = passable.map((a) => model.actions.indexOf(a)).join(',');
+    let exUnverified = exploreCache.get(key);
+    if (!exUnverified) { exUnverified = explore(passable, bit); exploreCache.set(key, exUnverified); }
     const unverState = findSatisfying(exUnverified, reqMask);
     if (unverState != null) {
       const witness = reconstruct(exUnverified.parent, unverState, bit);

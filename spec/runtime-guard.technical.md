@@ -123,9 +123,19 @@ Two guardrails on this, both fixture-tested:
   `.claude/polycheck.guard.json`. If that file is absent, unreadable, or names a
   region pack the linter cannot load, the hook falls back to `gateKind: 'hook'`
   (unverified). **A guard we cannot confirm is configured is not a gate.**
-- **G-b** — The recognition is on the *command string shape* plus a version check,
-  and any mismatch degrades to `'hook'`. A user hand-writing a hook that merely
-  looks like polycheck's does not inherit the verdict.
+- **G-b** — Recognition is on the *command string shape*. This is a WEAK check and
+  is described as such: it stops an unrelated script from inheriting the verdict,
+  but a wrapper, a stale path, or a renamed copy whose command mentions
+  `polycheck-guard` would still be certified. Tightening it to a resolved-path
+  match against the installed binary is open work.
+- **G-c** — A hook covers a tool only if **both** its `matcher` and its per-hook
+  `if` filter admit it. `if` is evaluated by the host *before the process spawns*,
+  so an if-filtered hook cannot be gating a tool outside its filter. Missing this
+  was a real bug: `guard init` writes if-filtered entries for latency, so every
+  tool outside the filter set — MCP tools in particular — was being credited to a
+  gate that would never fire for it. MCP now gets its own matcher-scoped entry
+  with no `if`, since a wildcard `if` rule is not something WP0 confirmed the host
+  accepts, and a filter that silently never matches is precisely this bug.
 
 The soundness argument rests on point 1. If `allow` ever becomes emittable, this
 verified-gate status must be withdrawn in the same change. That coupling is recorded

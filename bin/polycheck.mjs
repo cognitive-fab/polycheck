@@ -27,6 +27,16 @@ if (process.argv[2] === 'guard') {
   const yes = rest.includes('--yes');
   const pathArg = rest.find((a) => !a.startsWith('-')) || '.';
   let out;
+  if (sub === 'hook') {
+    // Documented in GUARD_HELP, so it must actually work. Delegate to the hook
+    // binary with stdin/stdout inherited — the host pipes JSON through it.
+    const { spawnSync } = await import('node:child_process');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const bin = join(dirname(fileURLToPath(import.meta.url)), 'polycheck-guard.mjs');
+    const r = spawnSync(process.execPath, [bin, ...process.argv.slice(4)], { stdio: 'inherit' });
+    process.exit(r.status ?? 0);
+  }
   if (sub === 'init') out = guardInit(pathArg, { yes });
   else if (sub === 'off') out = guardOff(pathArg);
   else if (sub === 'status') out = guardStatus('.', rest.find((a) => !a.startsWith('-')));

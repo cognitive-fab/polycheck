@@ -44,7 +44,16 @@ export function evaluatePre(payload, deps = {}) {
   const config = deps.config || loadGuardConfig(cwd);
   const regionsFile = deps.regionsFile || JSON.parse(readFileSync(REGIONS_FILE, 'utf8'));
   const regions = runtimeRegions(regionsFile, config);
-  const basis = config.basis === 'observed' ? 'observed' : 'capability'; // M0: capability only in practice
+  // M0 has no PostToolUse evidence pass, so held.observed never grows. Honouring
+  // `basis: observed` here would read an always-empty held set and silently
+  // degrade the guard to a single-call classifier — no composition detection at
+  // all — while the linter still certified it as a gate. Refuse it instead.
+  const basis = 'capability';
+  if (config.basis === 'observed' && !deps.quiet) {
+    try {
+      process.stderr.write("polycheck guard: basis 'observed' needs the PostToolUse evidence pass (M1) and is IGNORED at M0; using 'capability'.\n");
+    } catch { /* stderr may be closed in-process */ }
+  }
 
   const loaded = deps.ledger
     ? { ledger: deps.ledger, status: 'loaded' }
@@ -112,12 +121,18 @@ export function evaluateSessionStart(payload, deps = {}) {
   const sessionId = field(payload, 'session_id', { required: true });
   const source = field(payload, 'source');
 
-  // A resumed session did not un-read its secrets: context survived, so the
-  // ledger survives with it. Only a genuinely new session starts empty.
-  if (source === 'resume') {
+  // Only a genuinely NEW session starts empty. A resumed or compacted session
+  // did not un-read its secrets — compaction shortens the transcript and keeps
+  // a summary, so the context that read a credential is still in the model's
+  // head. Wiping the ledger there launders taint: read a secret, compact, then
+  // egress with no gate. Defaulting to "fresh" for unknown sources was the bug;
+  // the safe default is to PRESERVE, and only reset on the two sources that
+  // genuinely mean a new session.
+  const RESETS = new Set(['startup', 'clear']);
+  if (!RESETS.has(source)) {
     const { ledger } = loadLedger(sessionId, cwd, deps.env);
     if (!deps.ledger) saveLedger(ledger, deps.env);
-    return { action: 'resumed', held: ledger.held };
+    return { action: source === 'resume' ? 'resumed' : `preserved (${source ?? 'unknown source'})`, held: ledger.held };
   }
   const fresh = emptyLedger(sessionId, cwd, { basis: (deps.config || loadGuardConfig(cwd)).basis || 'capability' });
   if (!deps.ledger) saveLedger(fresh, deps.env);

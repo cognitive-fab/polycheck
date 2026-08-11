@@ -13,6 +13,11 @@ input* to *credential egress* with no gate in between. Either:
 npx @cognitive-fab/polycheck .
 ```
 
+**Adopting it in your own project?** See [`docs/adopting.md`](docs/adopting.md) —
+a `CLAUDE.md` snippet so your agent runs it, a `/polycheck` slash command, and a
+CI step that fails a PR on a bypass. (Nothing makes Claude Code run polycheck
+unless your project tells it to — that guide is how.)
+
 Zero dependencies. Offline. Deterministic. No model call, no network, no clock.
 The **linter** runs on any repo in seconds and changes no behavior — there is
 nothing to integrate and nothing to trust at runtime. If you want the same model

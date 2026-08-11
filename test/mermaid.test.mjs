@@ -32,6 +32,12 @@ test('the source-egress witness draws the two-step composition', () => {
   assert.match(out, /proprietary/);
 });
 
+test('each diagram carries the fix note — the remedy travels with the screenshot', () => {
+  const out = mm('vulnerable');
+  // a note inside the diagram naming the exact edit
+  assert.match(out, /Note over A,Z: ✔ fix: gate 'egress' — move to ask\/deny: WebFetch, Bash\(curl:\*\)/);
+});
+
 test('a PROOF policy draws nothing — no witness, no false picture', () => {
   const out = mm('mediated');
   assert.doesNotMatch(out, /```mermaid/);

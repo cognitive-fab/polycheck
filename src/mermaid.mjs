@@ -16,6 +16,16 @@ function clean(s, n = 58) {
 
 const label = (a) => clean(`${a.tool}${a.specifier != null ? `(${a.specifier})` : ''}`);
 
+// The one-line remedy, from the same fix the text report prints. Rendered as a
+// note INSIDE the diagram so a screenshot carries the answer, not just the hole.
+function fixText(r) {
+  const f = r.fix;
+  if (f && f.kind === 'gate') return `fix: gate '${f.effect}' — move to ask/deny: ${f.actions.join(', ')}`;
+  if (f && f.kind === 'shell') return "fix: a granted tool runs arbitrary code — gate it (ask/deny) or narrow to fixed arguments";
+  if (r.status === 'INCONCLUSIVE') return 'fix: make the gate verifiable — put these behind an explicit ask/deny rule';
+  return null;
+}
+
 function witnessDiagram(r) {
   const L = ['```mermaid', 'sequenceDiagram', '  autonumber',
     '  participant A as Agent session',
@@ -39,6 +49,8 @@ function witnessDiagram(r) {
       ? 'one granted tool runs arbitrary code — a shell'
       : '0 gates crossed';
   L.push(`  A-xZ: REACHED · ${clean(req, 48)} · ${how}`);
+  const fix = fixText(r);
+  if (fix) L.push(`  Note over A,Z: ✔ ${clean(fix, 96)}`);
   L.push('```');
   return L.join('\n');
 }

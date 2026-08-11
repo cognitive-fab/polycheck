@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Read(./**)",
+      "Bash(curl:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "/abs/scripts/my-own-hook.mjs",
+              "pre"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

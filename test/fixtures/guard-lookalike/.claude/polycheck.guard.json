@@ -1,0 +1,7 @@
+{
+  "basis": "capability",
+  "onComplete": {
+    "lethal-trifecta": "ask",
+    "credential-egress": "ask"
+  }
+}

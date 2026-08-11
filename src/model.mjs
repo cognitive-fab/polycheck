@@ -57,7 +57,7 @@ export function buildModel(scan, labels, regions, opts = {}) {
         return; // this edge was live-but-for the deny; it is genuinely closed
       }
     }
-    const { effects, notes, tag } = labelEffects(tool, specifier, labels);
+    const { effects, notes, tag, shellReason, scriptPath } = labelEffects(tool, specifier, labels);
     for (const n of notes) if (!assumptions.includes(n)) assumptions.push(n);
     // A tool with no exfil-relevant effect is not worth an edge in this model,
     // but keep unlabeled/benign notes (already pushed above).
@@ -68,7 +68,7 @@ export function buildModel(scan, labels, regions, opts = {}) {
     // matches, but we cannot read its logic — most hooks log/format, they do not
     // block) and 'assumed' (a gate polycheck synthesized, e.g. an undeclared MCP
     // server we assume prompts — not a rule anyone wrote). null = ungated.
-    let gateKind, gateReason;
+    let gateKind, gateReason, gateRegions = null;
     if (assumed) {
       gateKind = 'assumed';
       gateReason = `assumed prompt — synthesized by polycheck, not a written rule`;
@@ -76,8 +76,22 @@ export function buildModel(scan, labels, regions, opts = {}) {
       gateKind = decision === 'ask' ? 'ask' : null;
       gateReason = gateKind === 'ask' ? `permission 'ask'` : null;
       if (!bypass && gateKind !== 'ask') {
-        const h = hooks.find((hk) => hk.event === 'PreToolUse' && hookMatches(hk.matcher, tool));
-        if (h) { gateKind = 'hook'; gateReason = `PreToolUse hook (matcher '${h.matcher}', logic unverified)`; }
+        const matching = hooks.filter((hk) => hk.event === 'PreToolUse' && hookMatches(hk.matcher, tool));
+        // polycheck's OWN guard is a VERIFIED gate, but only for the regions it
+        // is configured to gate — see spec/runtime-guard.technical.md §2.0. The
+        // soundness argument is that its decision union is ask|deny|passthrough,
+        // so it can only ADD a gate, never remove one. If that union ever widens
+        // to include 'allow', this must be withdrawn in the same change.
+        const g = matching.find((hk) => hk.kind === 'guard' && hk.guardRegions?.length);
+        if (g) {
+          gateKind = 'guard';
+          gateRegions = g.guardRegions;
+          gateReason = `polycheck guard (gates: ${g.guardRegions.join(', ')})`;
+        } else if (matching.length) {
+          const h = matching[0];
+          gateKind = 'hook';
+          gateReason = `PreToolUse hook (matcher '${h.matcher}', logic unverified)`;
+        }
       }
     }
     if (bypass) { gateKind = null; gateReason = null; }
@@ -88,7 +102,8 @@ export function buildModel(scan, labels, regions, opts = {}) {
     seen.add(id);
     actions.push({
       tool, specifier, decision, source, raw: raw ?? id,
-      effects: [...effects], gate, gateKind, gateReason, tag: tag ?? null,
+      effects: [...effects], gate, gateKind, gateReason, gateRegions, tag: tag ?? null,
+      shellReason: shellReason ?? null, scriptPath: scriptPath ?? null,
     });
   };
 
@@ -142,5 +157,18 @@ export function buildModel(scan, labels, regions, opts = {}) {
     }
   }
 
-  return { actions, assumptions, regions: regions.regions, bypass, suppressedByDeny };
+  // Rules that can WRITE repo code without crossing a gate. Edit/Write carry no
+  // exfil effect so they never become actions — but they are exactly what makes
+  // an exact interpreter invocation unbounded, so the checker needs them.
+  // Exact-interpreter grants are deliberately excluded from this set: including
+  // them would be circular (they are the thing being explained).
+  const WRITERS = new Set(["Edit", "Write", "NotebookEdit"]);
+  const ungatedWriters = bypass
+    ? [{ raw: "everything (bypassPermissions)" }]
+    : scan.rules
+        .filter((r) => r.decision === "allow" && WRITERS.has(r.tool)
+          && !scan.rules.some((d) => d.decision !== "allow" && d.tool === r.tool && String(d.specifier) === String(r.specifier)))
+        .map((r) => ({ tool: r.tool, specifier: r.specifier, raw: r.raw, source: r.source }));
+
+  return { actions, assumptions, regions: regions.regions, bypass, suppressedByDeny, ungatedWriters };
 }

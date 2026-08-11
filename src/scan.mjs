@@ -40,6 +40,47 @@ const BUCKETS = [
   ['allow', 'allow'],
 ];
 
+// Is this hook entry polycheck's OWN guard, and is it configured? Recognising it
+// lets check.mjs treat it as a VERIFIED gate rather than the unverified default
+// — see spec/runtime-guard.technical.md §2.0 for why that is sound (the guard's
+// decision union is ask|deny|passthrough, so it can only ADD a gate).
+//
+// Two guardrails, both deliberate:
+//   G-a  the claim is scoped to the regions the guard is CONFIGURED to gate. No
+//        readable config ⇒ not a guard ⇒ ordinary unverified hook.
+//   G-b  recognition is on the command shape. A hand-written hook that merely
+//        resembles polycheck's does not inherit the verdict — but neither does a
+//        real guard whose config we cannot read, which is the safe direction.
+//
+// Returns the region-name array it gates, or null.
+const GUARD_CMD = /polycheck[-\s]guard(\.mjs)?\b/i;
+
+function guardHookOf(entry, guardConfig) {
+  if (!guardConfig) return null;                    // G-a: unconfigured ⇒ not a gate
+  if (entry?.matcher != null && entry.matcher !== '*' && entry.matcher !== '') {
+    // A guard wired to only some tools does not gate the others; refusing to
+    // reason about the partial case is safer than modelling it wrong.
+    return null;
+  }
+  for (const h of entry?.hooks || []) {
+    const text = [h?.command, ...(h?.args || [])].filter(Boolean).join(' ');
+    if (GUARD_CMD.test(text)) return guardConfig.regions;
+  }
+  return null;
+}
+
+// The guard's config, if present and readable. `onComplete` names the regions it
+// gates; absent means the default set, which we cannot know here, so an absent
+// or malformed file yields null and the hook stays unverified (G-a).
+function readGuardConfig(root) {
+  const r = readJson(join(root, '.claude', 'polycheck.guard.json'));
+  if (!r.exists || !r.data) return null;
+  const oc = r.data.onComplete;
+  if (!oc || typeof oc !== 'object') return null;
+  const regions = Object.keys(oc).filter((k) => oc[k] === 'ask' || oc[k] === 'deny');
+  return regions.length ? { regions, path: r.path } : null;
+}
+
 export function scanRepo(root) {
   const sources = [];
   const rules = [];
@@ -54,6 +95,9 @@ export function scanRepo(root) {
 
   let defaultMode = null;
   let sawAnySettings = false;
+  // Read once, before the settings loop: the guard config is repo-level, not
+  // per-settings-file.
+  const guardConfig = readGuardConfig(root);
 
   for (const [kind, path] of settingsFiles) {
     const r = readJson(path);
@@ -86,7 +130,8 @@ export function scanRepo(root) {
       for (const [event, entries] of Object.entries(s.hooks)) {
         if (!Array.isArray(entries)) continue;
         for (const e of entries) {
-          hooks.push({ event, matcher: e?.matcher ?? '*', source: kind });
+          const guard = guardHookOf(e, guardConfig);
+          hooks.push({ event, matcher: e?.matcher ?? '*', source: kind, kind: guard ? 'guard' : 'hook', guardRegions: guard || null });
         }
       }
     }

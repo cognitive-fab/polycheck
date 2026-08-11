@@ -66,12 +66,24 @@ export function modelCheck(model) {
   universe.forEach((e, i) => { bit[e] = 1 << i; });
 
   const UNVERIFIED = new Set(['hook', 'assumed']);
-  const ungated = model.actions.filter((a) => a.gateKind == null);                              // no gate at all
-  const unverifiedPassable = model.actions.filter((a) => a.gateKind == null || UNVERIFIED.has(a.gateKind)); // + gates we can't stand behind
-  const all = model.actions; // deny already excluded upstream
+
+  // 'guard' is polycheck's OWN PreToolUse hook, and unlike an arbitrary hook we
+  // can stand behind it — but ONLY for the regions it is configured to gate. The
+  // soundness argument (spec/runtime-guard.technical.md §2.0): the guard's
+  // decision union is ask|deny|passthrough, so it can only ADD a gate, and it
+  // gates every call that completes one of its configured regions. For any OTHER
+  // region it is exactly as unverified as any other hook, so verification is a
+  // per-region question, not a per-action one.
+  const isUnverifiedFor = (a, region) => {
+    if (UNVERIFIED.has(a.gateKind)) return true;
+    if (a.gateKind === 'guard') return !(a.gateRegions || []).includes(region.name);
+    return false;
+  };
+
+  const ungated = model.actions.filter((a) => a.gateKind == null);  // no gate at all
+  const all = model.actions;                                        // deny already excluded upstream
 
   const exUngated = explore(ungated, bit);
-  const exUnverified = explore(unverifiedPassable, bit);
   const exAll = explore(all, bit);
 
   const findSatisfying = (ex, reqMask) => {
@@ -105,6 +117,23 @@ export function modelCheck(model) {
 
   const shellGrants = [...new Set(ungated.filter((a) => a.tag === 'shell').map(label))];
 
+  // Shell grants split by WHY they are worst-case, because the fix differs and
+  // the generic advice ("narrow each to fixed arguments") is already satisfied
+  // for two of the four kinds. Telling someone to do what they have already done
+  // reads as "your policy is fine" — the one thing this report must never imply.
+  const shellByReason = {};
+  for (const a of ungated.filter((x) => x.tag === 'shell')) {
+    const k = a.shellReason || 'interpreter-prefix';
+    (shellByReason[k] ||= []).push({ label: label(a), scriptPath: a.scriptPath || null });
+  }
+  // An exact interpreter invocation is bounded in its ARGUMENTS. It is unbounded
+  // in its CODE precisely when this same policy grants ungated writes to the repo.
+  // polycheck does not resolve the script's imports (it reads policy, not source),
+  // so this is a coupling it NAMES rather than proves.
+  const writableCode = shellByReason['writable-code']?.length
+    ? { grants: shellByReason['writable-code'], writers: model.ungatedWriters || [] }
+    : null;
+
   const results = model.regions.map((region) => {
     const reqMask = region.requires.reduce((m, e) => m | (bit[e] ?? 0), 0);
 
@@ -124,20 +153,27 @@ export function modelCheck(model) {
     }
 
     // Not reachable ungated. Is the only thing standing in the way an UNVERIFIED
-    // gate — a PreToolUse hook (logic we cannot read) or an 'assumed' MCP prompt
-    // polycheck synthesized? Then it is not a proof; we cannot confirm it blocks.
+    // gate — a PreToolUse hook (logic we cannot read), an 'assumed' MCP prompt
+    // polycheck synthesized, or a polycheck guard NOT configured for this region?
+    // Then it is not a proof; we cannot confirm it blocks.
+    const exUnverified = explore(
+      model.actions.filter((a) => a.gateKind == null || isUnverifiedFor(a, region)),
+      bit,
+    );
     const unverState = findSatisfying(exUnverified, reqMask);
     if (unverState != null) {
       const witness = reconstruct(exUnverified.parent, unverState, bit);
-      const kinds = [...new Set(witness.map((st) => st.action.gateKind).filter((k) => UNVERIFIED.has(k)))];
-      const unverifiedGates = [...new Set(witness.filter((st) => UNVERIFIED.has(st.action.gateKind)).map((st) => st.action.gateReason).filter(Boolean))];
+      const kinds = [...new Set(witness.map((st) => st.action.gateKind).filter((k) => k != null && (UNVERIFIED.has(k) || k === 'guard')))];
+      const unverifiedGates = [...new Set(witness.filter((st) => isUnverifiedFor(st.action, region)).map((st) => st.action.gateReason).filter(Boolean))];
       return { region, status: 'INCONCLUSIVE', reason: kinds.join('+') || 'unverified', witness, unverifiedGates };
     }
 
     // Every path crosses a VERIFIED gate ('ask').
     const mediatedState = findSatisfying(exAll, reqMask);
     if (mediatedState != null) {
-      const mediators = all.filter((a) => a.gateKind === 'ask' && a.effects.some((e) => region.requires.includes(e)));
+      // A guard configured for THIS region mediates it exactly as an 'ask' does.
+      const mediates = (a) => a.gateKind === 'ask' || (a.gateKind === 'guard' && (a.gateRegions || []).includes(region.name));
+      const mediators = all.filter((a) => mediates(a) && a.effects.some((e) => region.requires.includes(e)));
       return { region, status: 'PROOF', mediated: true, mediators };
     }
 
@@ -161,5 +197,5 @@ export function modelCheck(model) {
     return { region, status: 'PROOF', mediated: false };
   });
 
-  return { universe, results, actionCount: model.actions.length, ungatedCount: ungated.length, shellGrants };
+  return { universe, results, actionCount: model.actions.length, ungatedCount: ungated.length, shellGrants, shellByReason, writableCode };
 }

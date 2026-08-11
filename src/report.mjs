@@ -80,7 +80,36 @@ export function renderText(bundle, opts = {}) {
     L.push(dim('  A command prefix is not a security boundary: npm run, node, python, bash -c'));
     L.push(dim('  all execute whatever they are handed — any one is equivalent to unrestricted'));
     L.push(dim('  Bash, so every forbidden region is trivially reachable.'));
-    L.push(cyan('     fix') + dim(`  move these behind 'ask'/'deny', or narrow each to fixed arguments.`));
+
+    // The fix depends on WHY each grant is worst-case. "Narrow it to fixed
+    // arguments" is already satisfied for the exact ones, so printing it there
+    // would tell the reader their policy is fine when it is not.
+    const byReason = check.shellByReason || {};
+    const nPrefix = (byReason['unrestricted']?.length || 0) + (byReason['interpreter-prefix']?.length || 0);
+    if (nPrefix) {
+      L.push(cyan('     fix') + dim(`  ${nPrefix} open-ended: move behind 'ask'/'deny', or narrow to fixed arguments.`));
+    }
+    if (byReason['inline-code']?.length) {
+      L.push(cyan('     fix') + dim(`  ${byReason['inline-code'].length} pass a program on the command line (-e/-c): the arguments`));
+      L.push(dim('           ARE the program, so narrowing them changes nothing. Gate or delete.'));
+    }
+    const wc = check.writableCode;
+    if (wc) {
+      const scripts = [...new Set(wc.grants.map((g) => g.scriptPath).filter(Boolean))];
+      L.push(cyan('     fix') + dim(`  ${wc.grants.length} already fix every argument — narrowing them is DONE and`));
+      L.push(dim(`           changes nothing. They run code from this repo: ${scripts.slice(0, 3).join(', ')}${scripts.length > 3 ? `, +${scripts.length - 3}` : ''}`));
+      if (wc.writers.length) {
+        L.push(dim('           …and this policy grants ungated writes to it:'));
+        for (const w of wc.writers.slice(0, 4)) L.push(dim(`             · ${w.raw}${w.source ? `  [${w.source}]` : ''}`));
+        if (wc.writers.length > 4) L.push(dim(`             · … and ${wc.writers.length - 4} more`));
+        L.push(dim('           Bounded ARGUMENTS are not bounded CODE. Close either side: gate the'));
+        L.push(dim('           run, or gate the writes that let the agent choose what runs.'));
+      } else {
+        L.push(dim('           No ungated write grant was found, so the code is not agent-writable'));
+        L.push(dim('           through the modeled tools — but polycheck does not read the script,'));
+        L.push(dim('           so what it does once started is still unknown. Gate it to be sure.'));
+      }
+    }
     L.push('');
   }
 
@@ -157,6 +186,19 @@ export function renderText(bundle, opts = {}) {
     } else if (r.mediated && r.mediators?.length) {
       const gates = r.mediators.map((m) => `${m.tool}${m.specifier != null ? `(${m.specifier})` : ''} [${m.gateReason}]`);
       L.push(green(`PROOF · ${r.region.name}`) + dim(` — mediated by: ${[...new Set(gates)].join('; ')}`));
+
+      // A PROOF carried by polycheck's own guard must never read as an
+      // unconditional green. State the argument and the SCOPE of the claim, so a
+      // reader can check it rather than take it: the guard is a verified gate
+      // only because it cannot emit 'allow', and only for the regions it is
+      // configured to gate.
+      if (r.mediators.some((m) => m.gateKind === 'guard')) {
+        L.push(dim(`    why this counts as a gate: polycheck guard's decision union is ask/deny/passthrough —`));
+        L.push(dim(`    it can only ADD a gate, never remove one — and it gates every call completing this region.`));
+        L.push(dim(`    scope: this claim covers ONLY the regions named in .claude/polycheck.guard.json.`));
+        L.push(dim(`    it is a RUNTIME control: unlike an 'ask' rule, it depends on code running correctly`));
+        L.push(dim(`    on every call, and on the runtime labeler recognising the call. Not a static proof.`));
+      }
     }
   }
   if (check.results.some((r) => r.status === 'PROOF' && (r.mediators?.length || r.denials?.length))) L.push('');
@@ -226,6 +268,8 @@ export function renderJson(bundle) {
     ungatedCount: check.ungatedCount,
     universe: check.universe,
     shellGrants: check.shellGrants || [],
+    shellByReason: check.shellByReason || {},
+    writableCode: check.writableCode || null,
     regions: check.results.map((r) => ({
       name: r.region.name,
       kind: r.region.kind,
@@ -237,7 +281,7 @@ export function renderJson(bundle) {
       unverifiedGates: r.unverifiedGates ?? null,
       denials: r.denials ?? null,
       fix: r.fix ?? null,
-      mediators: (r.mediators || []).map((m) => ({ tool: m.tool, specifier: m.specifier, gateReason: m.gateReason })),
+      mediators: (r.mediators || []).map((m) => ({ tool: m.tool, specifier: m.specifier, gateKind: m.gateKind, gateRegions: m.gateRegions || null, gateReason: m.gateReason })),
       witness: (r.witness || []).map((st, i) => ({
         step: i + 1,
         tool: st.action.tool,

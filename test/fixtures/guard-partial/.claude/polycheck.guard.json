@@ -1,0 +1,6 @@
+{
+  "basis": "capability",
+  "onComplete": {
+    "credential-egress": "ask"
+  }
+}

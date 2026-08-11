@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Read(./**)",
+      "Bash(curl:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "/abs/bin/polycheck-guard.mjs",
+              "pre"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

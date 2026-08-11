@@ -18,6 +18,23 @@ import { renderText, renderMarkdown, renderJson } from '../src/report.mjs';
 import { renderTidyText, renderTidyJson } from '../src/tidy.mjs';
 import { planWrite, applyWrite, renderWriteText } from '../src/write.mjs';
 
+// `polycheck guard …` is a separate, opt-in product that shares this binary.
+// It is dispatched before flag parsing so its own subcommand grammar applies.
+if (process.argv[2] === 'guard') {
+  const { guardInit, guardOff, guardStatus, GUARD_HELP } = await import('../src/guard/cli.mjs');
+  const sub = process.argv[3];
+  const rest = process.argv.slice(4);
+  const yes = rest.includes('--yes');
+  const pathArg = rest.find((a) => !a.startsWith('-')) || '.';
+  let out;
+  if (sub === 'init') out = guardInit(pathArg, { yes });
+  else if (sub === 'off') out = guardOff(pathArg);
+  else if (sub === 'status') out = guardStatus('.', rest.find((a) => !a.startsWith('-')));
+  else out = { text: GUARD_HELP, exit: sub ? 3 : 0 };
+  process.stdout.write(out.text + '\n');
+  process.exit(out.exit ?? 0);
+}
+
 function parseArgs(argv) {
   const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true, verbose: false, tidy: false, write: false };
   for (let i = 0; i < argv.length; i++) {

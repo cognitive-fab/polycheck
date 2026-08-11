@@ -10,3 +10,6 @@ experiments/**/RECEIVED.txt
 
 # personal follow-up notes — local only, never published
 todo/
+
+# WP0 compat probe captures — local only.
+experiments/guard-compat/capture/

@@ -11,7 +11,22 @@
 // --json / --verbose.
 function clean(s, n = 58) {
   const t = String(s ?? '').replace(/[\n\r;#]+/g, ' ').replace(/"/g, "'").trim();
-  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+  return t.length > n ? t.slice(0, n - 1) + '...' : t;
+}
+
+// GitHub's mermaid renderer chokes on some non-ASCII in the diagram body (it
+// shows "svg element not in render tree" instead of the SVG). Map the glyphs the
+// emitter would otherwise use to ASCII so a --mermaid block reliably renders.
+function asciiSafe(s) {
+  return String(s)
+    .replace(/[⛔✔✗🩸]/g, '')
+    .replace(/∧/g, '+')
+    .replace(/[·•]/g, '-')
+    .replace(/[—–]/g, '-')
+    .replace(/→/g, '->')
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/…/g, '...');
 }
 
 const label = (a) => clean(`${a.tool}${a.specifier != null ? `(${a.specifier})` : ''}`);
@@ -29,8 +44,8 @@ function fixText(r) {
 function witnessDiagram(r) {
   const L = ['```mermaid', 'sequenceDiagram', '  autonumber',
     '  participant A as Agent session',
-    `  participant Z as ⛔ ${clean(r.region.name, 32)}`,
-    '  Note over A: session start · held: (nothing)'];
+    `  participant Z as FORBIDDEN: ${clean(r.region.name, 32)}`,
+    '  Note over A: session start -- held: (nothing)'];
 
   for (const st of r.witness) {
     const a = st.action;
@@ -39,20 +54,23 @@ function witnessDiagram(r) {
     const dec = a.decision || (a.gate ? 'gate?' : 'allow');
     const added = st.added.length ? '+' + st.added.join(' +') : '(no new effect)';
     L.push(`  A->>A: ${label(a)}  [${dec}]`);
-    L.push(`  Note over A: ${added} · held: ${st.held.join(', ') || 'none'}`);
+    L.push(`  Note over A: ${added} -- held: ${st.held.join(', ') || 'none'}`);
   }
 
-  const req = r.region.requires.join(' ∧ ');
+  const req = r.region.requires.join(' + ');
   const how = r.status === 'INCONCLUSIVE'
-    ? 'only an UNVERIFIED gate stands in the way — not a proof'
+    ? 'only an UNVERIFIED gate stands in the way - not a proof'
     : r.status === 'SHELL-EQUIVALENT'
-      ? 'one granted tool runs arbitrary code — a shell'
+      ? 'one granted tool runs arbitrary code - a shell'
       : '0 gates crossed';
-  L.push(`  A-xZ: REACHED · ${clean(req, 48)} · ${how}`);
+  L.push(`  A-xZ: REACHED -- ${clean(req, 48)} -- ${how}`);
   const fix = fixText(r);
-  if (fix) L.push(`  Note over A,Z: ✔ ${clean(fix, 96)}`);
+  if (fix) L.push(`  Note over A,Z: ${clean(fix, 96)}`);
   L.push('```');
-  return L.join('\n');
+  // Belt-and-suspenders: GitHub's mermaid renderer rejects some non-ASCII in the
+  // diagram body ("svg element not in render tree"), so normalise the fenced
+  // content to ASCII. The markdown AROUND the block keeps its nicer glyphs.
+  return asciiSafe(L.join('\n'));
 }
 
 /**

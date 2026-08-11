@@ -121,14 +121,14 @@ a live egress channel — the leak the credential-shaped defenses miss):
 sequenceDiagram
   autonumber
   participant A as Agent session
-  participant Z as ⛔ source-egress
-  Note over A: session start · held: (nothing)
+  participant Z as FORBIDDEN: source-egress
+  Note over A: session start -- held: (nothing)
   A->>A: WebFetch  [allow]
-  Note over A: +untrusted +egress · held: untrusted, egress
+  Note over A: +untrusted +egress -- held: untrusted, egress
   A->>A: Read(./**)  [allow]
-  Note over A: +sensitive +proprietary · held: untrusted, sensitive, egress, proprietary
-  A-xZ: REACHED · proprietary ∧ egress · 0 gates crossed
-  Note over A,Z: ✔ fix: gate 'egress' — move to ask/deny: WebFetch, Bash(curl:*)
+  Note over A: +sensitive +proprietary -- held: untrusted, sensitive, egress, proprietary
+  A-xZ: REACHED -- proprietary + egress -- 0 gates crossed
+  Note over A,Z: fix: gate 'egress' - move to ask/deny: WebFetch, Bash(curl:*)
 ```
 
 The diagram carries its own remedy: the ✗ path in, and the ✔ one-line edit that

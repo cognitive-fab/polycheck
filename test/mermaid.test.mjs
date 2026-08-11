@@ -34,8 +34,18 @@ test('the source-egress witness draws the two-step composition', () => {
 
 test('each diagram carries the fix note — the remedy travels with the screenshot', () => {
   const out = mm('vulnerable');
-  // a note inside the diagram naming the exact edit
-  assert.match(out, /Note over A,Z: ✔ fix: gate 'egress' — move to ask\/deny: WebFetch, Bash\(curl:\*\)/);
+  // a note inside the diagram naming the exact edit (ASCII so GitHub renders it)
+  assert.match(out, /Note over A,Z: fix: gate 'egress' - move to ask\/deny: WebFetch, Bash\(curl:\*\)/);
+});
+
+test('the diagram body is pure ASCII — GitHub mermaid rejects non-ASCII', () => {
+  // the "svg element not in render tree" failure. Every fenced body must be ASCII.
+  const out = mm('vulnerable');
+  const bodies = out.split('```mermaid').slice(1).map((s) => s.split('```')[0]);
+  for (const body of bodies) {
+    // eslint-disable-next-line no-control-regex
+    assert.doesNotMatch(body, /[^\x00-\x7F]/, 'diagram body must be ASCII-only');
+  }
 });
 
 test('a PROOF policy draws nothing — no witness, no false picture', () => {

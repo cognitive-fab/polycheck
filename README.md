@@ -14,8 +14,12 @@ npx @cognitive-fab/polycheck .
 ```
 
 Zero dependencies. Offline. Deterministic. No model call, no network, no clock.
-It runs on any repo in seconds and changes no behavior, so there is nothing to
-integrate and nothing to trust at runtime.
+The **linter** runs on any repo in seconds and changes no behavior — there is
+nothing to integrate and nothing to trust at runtime. If you want the same model
+enforced *at* runtime, there is a separate, opt-in layer — **[`polycheck
+guard`](#the-runtime-layer--polycheck-guard-opt-in)** — that gates the call which
+completes a composition. It reinforces the classifier and can never override it.
+It is opt-in precisely because it *does* run at runtime; the linter never does.
 
 > **We tried to make the gap fire against a live agent, and it didn't.** Across
 > four model versions and two attack shapes, the model refused every time — and
@@ -133,6 +137,10 @@ polycheck . --md                 a fenced block ready to paste into an issue/PR
 polycheck . --labels <file>      override the effect-label pack
 polycheck . --regions <file>     override the forbidden-region pack
 polycheck . --no-assume-defaults strict: model only explicitly-granted perms
+polycheck . --emit-automode      (experimental) compile the policy into auto-mode
+                                 classifier rules — print-only, never writes
+
+polycheck guard init | off | status    the opt-in runtime layer (see below)
 ```
 
 By default polycheck models Claude Code's auto-allowed read-only tools (`Read`,
@@ -256,6 +264,60 @@ CI-friendly: fail the build on `1`.
 
 ---
 
+## The runtime layer — polycheck guard (opt-in)
+
+The linter proves what a policy *could* permit, at deploy time. **polycheck
+guard** enforces the same model *at* runtime: a `PreToolUse` hook that, given
+what the session has already done, gates the call which **completes** a forbidden
+composition — and only that call. Everything else passes through untouched.
+
+The design constraint everything follows from: **the guard's decision space is
+`ask` / `deny` / passthrough. It never emits `allow`.** So it can only ever *add*
+a gate, never remove one — it reinforces the auto-mode classifier and can never
+override it. That single property is why installing it is safe by default:
+
+- a labeler mistake degrades to a *missing extra gate*, never a bypass — the call
+  still faces the rules and the classifier, exactly as without the guard;
+- it cannot soften a written `ask`/`deny`, and has no config that makes a session
+  more permissive than it is without the guard;
+- `guard off` is a clean revert.
+
+```
+polycheck guard init            run the linter, show what the guard would add, then
+                                (with --yes) write the hook wiring
+polycheck guard status <id>     a session's held effects, provenance, approvals
+polycheck guard off             remove the hook wiring
+```
+
+It gates on one of two bases. **`capability`** (the default) taints the session
+as soon as a call *could* have read a secret — safe for headless, at the cost of
+some gates on harmless calls. **`observed`** taints only once returned bytes match
+a credential shape — fewer gates, at the cost that a secret the patterns miss is a
+missed gate. `guard init` runs the linter first and, honestly, talks you *out* of
+installing when the repo is already `PROOF` (a static gate you wrote beats a
+runtime one) or has an unrestricted shell grant (the labeler would be the only
+thing left between the session and the region).
+
+**What it does not establish** is stated on every `guard status`: the runtime
+labeler is a larger trust obligation than the linter's, effects entering context
+outside the tool interface are invisible, and it is a runtime control that depends
+on code running correctly on every call. Not a static proof — a second layer whose
+failure mode is *absent*, never *permissive*. Full design:
+[`spec/runtime-guard.functional.md`](spec/runtime-guard.functional.md).
+
+### `--emit-automode` — experimental
+
+A third, cheaper-but-weaker angle: `--emit-automode` compiles the policy into the
+auto-mode classifier's own declarative rules (`soft_deny` for destructive actions
+intent can clear, `hard_deny` for boundaries it cannot, `environment` for
+context). Deploy-time, no runtime code. But the classifier is per-command, so it
+**cannot** see composition — this reinforces the per-command screen; it does not
+replace the guard or the proof. It is **print-only** (it never writes settings)
+until a field test confirms the classifier honors emitted rules
+([`spec/Q6-findings.md`](spec/Q6-findings.md)).
+
+---
+
 ## The demo, and the experiments
 
 - **`demo/showcase.mjs`** — **the demo.** `polycheck` across policies that each
@@ -302,6 +364,12 @@ CI-friendly: fail the build on `1`.
   so what lands is exactly what was proved.
 - **`src/report.mjs`** — render the witness/proof and, always, *what the check
   did not establish*.
+- **`src/guard/`** — the opt-in runtime layer (see above): a session effect
+  `ledger`, an argument-aware `runtime-label`er, the `decide` mask-test, the
+  closed-union `emit`ter that cannot produce `allow`, and the `cli` installer.
+  Separate from the linter core; the linter never imports it.
+- **`src/emit-automode.mjs`** — the experimental policy → classifier-rules
+  compiler.
 
 Effects are monotone within a session, so a state is a subset of the effect
 universe and BFS discovery order yields the shortest witness for free. The whole

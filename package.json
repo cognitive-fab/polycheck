@@ -1,6 +1,6 @@
 {
   "name": "@cognitive-fab/polycheck",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A least-privilege linter for Claude Code agent policies. Ingests a repo's .claude settings + MCP config and outputs a proof (every path into a forbidden region crosses a gate) or a witness: a concrete sequence of allowed tool calls that reaches credential egress with zero gates crossed. Zero dependencies, offline, deterministic.",
   "type": "module",
   "bin": {

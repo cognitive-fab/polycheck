@@ -139,6 +139,8 @@ polycheck . --write              apply that edit — line surgery, then re-verif
 polycheck . --verbose            expand grouped grants + every assumption (human-readable)
 polycheck . --json               machine-readable output
 polycheck . --md                 a fenced block ready to paste into an issue/PR
+polycheck . --mermaid            each witness as a mermaid sequence diagram
+                                 (GitHub renders it; screenshot-ready)
 polycheck . --labels <file>      override the effect-label pack
 polycheck . --regions <file>     override the forbidden-region pack
 polycheck . --no-assume-defaults strict: model only explicitly-granted perms

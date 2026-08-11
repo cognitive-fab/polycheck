@@ -3,6 +3,14 @@
 All notable changes to polycheck. Format follows [Keep a Changelog](https://keepachangelog.com);
 this project is experimental and pre-1.0, so minor versions may move fast.
 
+## [Unreleased]
+
+### Added
+- **`--mermaid`.** Renders each witness as a mermaid sequence diagram — the
+  accumulating held-effect state per allowed call, ending at the forbidden region.
+  Presentation only (makes no new claim), GitHub-renderable, screenshot-ready. A
+  clean policy draws nothing.
+
 ## [0.6.0]
 
 ### Added

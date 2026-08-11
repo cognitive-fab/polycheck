@@ -15,6 +15,7 @@
 
 import { analyze, tidyPolicy, DEFAULT_LABELS, DEFAULT_REGIONS } from '../src/index.mjs';
 import { renderText, renderMarkdown, renderJson } from '../src/report.mjs';
+import { renderMermaid } from '../src/mermaid.mjs';
 import { renderTidyText, renderTidyJson } from '../src/tidy.mjs';
 import { emitAutomode, renderAutomode } from '../src/emit-automode.mjs';
 import { planWrite, applyWrite, renderWriteText } from '../src/write.mjs';
@@ -53,6 +54,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--json') opts.format = 'json';
     else if (a === '--md' || a === '--markdown') opts.format = 'md';
+    else if (a === '--mermaid') opts.format = 'mermaid';
     else if (a === '--verbose' || a === '-v') opts.verbose = true;
     else if (a === '--tidy') opts.tidy = true;
     else if (a === '--emit-automode') opts.emitAutomode = true;
@@ -85,6 +87,7 @@ Usage:
                                    disk and rolled back if it does not match)
   polycheck . --verbose            expand grouped grants + every assumption (human-readable)
   polycheck . --json | --md        machine output / paste-ready block
+  polycheck . --mermaid            each witness as a mermaid sequence diagram
   polycheck . --no-assume-defaults strict: model only explicitly-granted permissions
   polycheck . --labels <file>      override the effect-label pack
   polycheck . --regions <file>     override the forbidden-region pack
@@ -167,6 +170,7 @@ function main() {
 
   if (opts.format === 'json') process.stdout.write(renderJson(bundle) + '\n');
   else if (opts.format === 'md') process.stdout.write(renderMarkdown(bundle, { verbose: opts.verbose }));
+  else if (opts.format === 'mermaid') process.stdout.write(renderMermaid(bundle) + '\n');
   else process.stdout.write(renderText(bundle, { color, verbose: opts.verbose }) + '\n');
 
   const statuses = bundle.check.results.map((r) => r.status);

@@ -13,3 +13,6 @@ todo/
 
 # WP0 compat probe captures — local only.
 experiments/guard-compat/capture/
+
+# Q6 field-test captures — local only.
+experiments/automode-probe/capture/

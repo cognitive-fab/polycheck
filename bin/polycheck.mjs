@@ -16,6 +16,7 @@
 import { analyze, tidyPolicy, DEFAULT_LABELS, DEFAULT_REGIONS } from '../src/index.mjs';
 import { renderText, renderMarkdown, renderJson } from '../src/report.mjs';
 import { renderTidyText, renderTidyJson } from '../src/tidy.mjs';
+import { emitAutomode, renderAutomode } from '../src/emit-automode.mjs';
 import { planWrite, applyWrite, renderWriteText } from '../src/write.mjs';
 
 // `polycheck guard …` is a separate, opt-in product that shares this binary.
@@ -53,6 +54,7 @@ function parseArgs(argv) {
     else if (a === '--md' || a === '--markdown') opts.format = 'md';
     else if (a === '--verbose' || a === '-v') opts.verbose = true;
     else if (a === '--tidy') opts.tidy = true;
+    else if (a === '--emit-automode') opts.emitAutomode = true;
     else if (a === '--write') { opts.tidy = true; opts.write = true; }
     else if (a === '--no-color') opts.color = false;
     else if (a === '--color') opts.color = true;
@@ -115,6 +117,18 @@ function main() {
   }
 
   const color = opts.color ?? (process.stdout.isTTY && !process.env.NO_COLOR);
+
+  // --emit-automode (EXPERIMENTAL, Q6): compile the policy into auto-mode
+  // classifier rules and PRINT them. Print-only by design — it never touches
+  // settings, so it is zero-risk to run; you copy what you want. Exits 0.
+  if (opts.emitAutomode) {
+    if (opts.format === 'json') {
+      process.stdout.write(JSON.stringify(emitAutomode(bundle), null, 2) + '\n');
+    } else {
+      process.stdout.write(renderAutomode(bundle, { color }) + '\n');
+    }
+    process.exit(0);
+  }
 
   // --tidy is a hygiene pass, not the security check: it reports which grants
   // can go and PROVES what removing them does to the blast radius. It never

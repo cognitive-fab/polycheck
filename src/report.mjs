@@ -2,8 +2,15 @@
 // like a screenshot someone forwards: a concrete, provenance-anchored sequence
 // of allowed tool calls that reaches credential egress with zero gates crossed.
 // The proof, when it holds, has to be honest about what it did NOT cover —
-// colouring an unchecked thing green is the single most dangerous thing a
-// security report can do.
+// painting an unchecked thing green is the one thing a security report must not do.
+//
+// TONE — describe capability, not culpability. polycheck reports what a policy
+// PERMITS: reach the author granted, to keep or to close. A finding is a
+// description of that reach, never an accusation that anything is wrong, and
+// never an alarm. Hand the decision back with the evidence; state the reach and
+// let the reader weigh it. Positive framing does not mean soft substance — a
+// BYPASS is still a BYPASS — it means the words assume a defender reading their
+// own policy, not a suspect being charged.
 
 const GLYPH = { BYPASS: '✗', 'SHELL-EQUIVALENT': '✗', PROOF: '✓', VACUOUS: '•', INCONCLUSIVE: '•' };
 
@@ -50,9 +57,10 @@ export function renderText(bundle, opts = {}) {
   L.push(`${dim('repo:')}    ${scan.root}`);
   L.push(`${dim('sources:')} ${srcLine}`);
   L.push(`${dim('mode:')}    ${scan.defaultMode || 'default'}    ${dim('actions modeled:')} ${check.actionCount} ${dim(`(ungated: ${check.ungatedCount})`)}`);
+  L.push(dim('This describes what your policy permits — reach you granted, to keep or close. Not a judgment.'));
   L.push('');
 
-  L.push(bold('FORBIDDEN REGIONS'));
+  L.push(bold('FORBIDDEN REGIONS') + dim('  — effect-combinations you declared should never be reachable without a gate'));
   for (const r of check.results) {
     const g = GLYPH[r.status];
     const name = r.region.name.padEnd(18);
@@ -79,7 +87,8 @@ export function renderText(bundle, opts = {}) {
     else if (grants.length > groups.length) collapsed = true;
     L.push(dim('  A command prefix is not a security boundary: npm run, node, python, bash -c'));
     L.push(dim('  all execute whatever they are handed — any one is equivalent to unrestricted'));
-    L.push(dim('  Bash, so every forbidden region is trivially reachable.'));
+    L.push(dim('  Bash, so every region is reachable in a single step. If that reach is intended'));
+    L.push(dim('  (a dev box, your own tooling), keep it; if not, one of the fixes below closes it.'));
 
     // The fix depends on WHY each grant is worst-case. "Narrow it to fixed
     // arguments" is already satisfied for the exact ones, so printing it there

@@ -6,13 +6,13 @@
       "name": "lethal-trifecta",
       "kind": "safety",
       "requires": ["untrusted", "sensitive", "egress"],
-      "gloss": "untrusted content + readable secrets + a live egress channel, all held at once — the canonical exfiltration-by-injection composition."
+      "gloss": "external content + readable secrets + a live outbound channel, all held at once — the combination where instructions from that external content could carry a secret off the machine. You've declared this should never be reachable without a gate."
     },
     {
       "name": "credential-egress",
       "kind": "safety",
       "requires": ["sensitive", "egress"],
-      "gloss": "secrets readable and an outbound channel live at once — a secret can leave the machine. Does not require an untrusted trigger (covers a malicious tool / MCP server acting directly). This is the 'five-step path to credential egress' a screenshot names."
+      "gloss": "secrets readable and an outbound channel live at once — a secret could leave the machine. Does not need an external trigger (it also covers a tool or MCP server acting on its own). The path to credential egress, stated in one line."
     }
   ]
 }

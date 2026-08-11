@@ -19,7 +19,7 @@ const GUARD_BIN = resolve(HERE, '..', '..', 'bin', 'polycheck-guard.mjs');
 
 const DEFAULT_CONFIG = {
   basis: 'capability',
-  onComplete: { 'lethal-trifecta': 'ask', 'credential-egress': 'ask' },
+  onComplete: { 'lethal-trifecta': 'ask', 'credential-egress': 'ask', 'source-egress': 'ask' },
   prewarn: true,
 };
 

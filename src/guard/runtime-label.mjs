@@ -135,17 +135,27 @@ export function providerKey(toolName, target) {
 
 // At runtime we hold the real path, so we test it directly against the parent
 // pack's sensitivePaths instead of asking whether a glob could cover a secret.
-export function pathIsSensitive(p, labels, cwd) {
+function pathMatchesAny(p, globs, cwd) {
   if (!p) return null;
   let abs = String(p);
   try { abs = isAbsolute(abs) ? abs : resolve(cwd || '.', abs); } catch { /* keep raw */ }
   const norm = normPath(abs.replace(/\\/g, '/'));
-  for (const g of labels.sensitivePaths || []) {
+  for (const g of globs || []) {
     let re;
     try { re = globToRe(g); } catch { continue; }
     if (re.test(norm) || re.test('/' + norm)) return g;
   }
   return null;
+}
+export function pathIsSensitive(p, labels, cwd) {
+  return pathMatchesAny(p, labels.sensitivePaths, cwd);
+}
+// The runtime counterpart to the linter's `proprietary` effect: did this call
+// read a REAL first-party source path? Without this the guard could never gate
+// the source-egress region — the linter would flag it deterministically but the
+// runtime hook would be blind to it.
+export function pathIsProprietary(p, labels, cwd) {
+  return pathMatchesAny(p, labels.proprietaryPaths, cwd);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +229,12 @@ function labelSimpleCommand(simple, rt, labels, cwd, effects, notes) {
       if (a.startsWith('-')) continue;
       const hit = pathIsSensitive(a, labels, cwd);
       if (hit) { addEffect(effects, 'sensitive', 'capability', `${ruleBase}/path`, `reads '${a}' (matches ${hit})`); break; }
+    }
+    // same arg scan, for first-party source (proprietary) — `cat src/x.mjs`
+    for (const a of args) {
+      if (a.startsWith('-')) continue;
+      const hit = pathIsProprietary(a, labels, cwd);
+      if (hit) { addEffect(effects, 'proprietary', 'capability', `${ruleBase}/src`, `reads source '${a}' (matches ${hit})`); break; }
     }
   }
 
@@ -310,6 +326,17 @@ export function labelCall(toolName, toolInput, labels, opts = {}) {
       const hit = pathIsSensitive(p, labels, cwd);
       if (hit) addEffect(effects, 'sensitive', 'capability', `tool/${toolName}/path`, `'${p}' matches ${hit}`);
       target = { path: normPath(String(p).replace(/\\/g, '/')) };
+    }
+  }
+
+  if (def.proprietaryWhenPathMatches) {
+    const p = toolInput?.[def.proprietaryWhenPathMatches];
+    if (p == null) {
+      addEffect(effects, 'proprietary', 'capability', `tool/${toolName}/unrestricted`, 'no path argument — can read any source');
+    } else {
+      const hit = pathIsProprietary(p, labels, cwd);
+      if (hit) addEffect(effects, 'proprietary', 'capability', `tool/${toolName}/src`, `'${p}' is first-party source (matches ${hit})`);
+      if (!target) target = { path: normPath(String(p).replace(/\\/g, '/')) };
     }
   }
 

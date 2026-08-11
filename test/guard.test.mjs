@@ -210,7 +210,8 @@ test('labeler: a path-reading command is sensitive only for a secret path', () =
 });
 
 test('labeler: Read is sharp — the concrete path decides, not a glob', () => {
-  assert.deepEqual(eff(lbl('Read', { file_path: 'src/index.mjs' })), []);
+  assert.deepEqual(eff(lbl('Read', { file_path: 'src/index.mjs' })), ['proprietary']); // source, not a secret
+  assert.deepEqual(eff(lbl('Read', { file_path: 'docs/guide.md' })), []); // neither
   assert.deepEqual(eff(lbl('Read', { file_path: '.env' })), ['sensitive']);
   assert.deepEqual(eff(lbl('Read', { file_path: 'C:/repo/config/.env.production' })), ['sensitive']);
 });

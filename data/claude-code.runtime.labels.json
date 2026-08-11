@@ -84,8 +84,8 @@
 
   "//tools": "Non-shell tools. Read/Grep/Glob resolve their concrete path against the parent pack's sensitivePaths — far sharper than the static labeler's glob-covers-exemplar test, because at runtime the real path is known.",
   "tools": {
-    "Read":   { "sensitiveWhenPathMatches": "file_path" },
-    "Grep":   { "sensitiveWhenPathMatches": "path" },
+    "Read":   { "sensitiveWhenPathMatches": "file_path", "proprietaryWhenPathMatches": "file_path" },
+    "Grep":   { "sensitiveWhenPathMatches": "path", "proprietaryWhenPathMatches": "path" },
     "Glob":   { "effects": [] },
     "Write":  { "effects": [] },
     "Edit":   { "effects": [] },

@@ -7,7 +7,8 @@ input* to *credential egress* with no gate in between. Either:
 
 - **PROOF** — every path into a forbidden region crosses a gate, or
 - **WITNESS** — a concrete sequence of *allowed* tool calls that reaches
-  credential egress with **zero gates crossed**.
+  credential egress with **zero gates crossed** (and `--mermaid` draws it — see
+  [what a run looks like](#what-a-run-looks-like)).
 
 ```
 npx @cognitive-fab/polycheck .
@@ -111,6 +112,27 @@ WITNESS · lethal-trifecta  (untrusted ∧ sensitive ∧ egress)
 
      fix close the 'untrusted' effect — move to ask/deny: WebFetch
 ```
+
+The same witness as a picture — `polycheck . --mermaid`, rendered inline by
+GitHub (here on the `source-egress` region, where readable **source code** meets
+a live egress channel — the leak the credential-shaped defenses miss):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Agent session
+  participant Z as ⛔ source-egress
+  Note over A: session start · held: (nothing)
+  A->>A: WebFetch  [allow]
+  Note over A: +untrusted +egress · held: untrusted, egress
+  A->>A: Read(./**)  [allow]
+  Note over A: +sensitive +proprietary · held: untrusted, sensitive, egress, proprietary
+  A-xZ: REACHED · proprietary ∧ egress · 0 gates crossed
+  Note over A,Z: ✔ fix: gate 'egress' — move to ask/deny: WebFetch, Bash(curl:*)
+```
+
+The diagram carries its own remedy: the ✗ path in, and the ✔ one-line edit that
+closes it. A clean policy draws nothing.
 
 Exit code `1`. `WebFetch` is an egress channel too (it carries data out in the
 URL), so gating only `curl` left the door open — the kind of thing a human

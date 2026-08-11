@@ -3,9 +3,9 @@
 All notable changes to polycheck. Format follows [Keep a Changelog](https://keepachangelog.com);
 this project is experimental and pre-1.0, so minor versions may move fast.
 
-## [Unreleased]
+## [0.5.0]
 
-Three additions since 0.4.0, all opt-in and reversible. Suggested release: `0.5.0`.
+Since 0.4.0, all opt-in and reversible.
 
 ### Added
 - **`polycheck guard` — M1 evidence pass.** A `PostToolUse` hook now sees what a
@@ -20,6 +20,12 @@ Three additions since 0.4.0, all opt-in and reversible. Suggested release: `0.5.
   — it never writes settings.** The classifier is per-command, so this reinforces
   the 89% screen; it does not replace the guard or the proof. See
   [`spec/Q6-findings.md`](spec/Q6-findings.md).
+- **`example/` sandbox** — a fake, safe mini-project whose reasonable-looking
+  policy hides a two-step composition, for field-testing the guard and
+  `--emit-automode` from a real Claude Code session.
+- **`docs/adopting.md`** — how to wire polycheck into your own project: a
+  `CLAUDE.md` snippet, a `/polycheck` slash command, a CI step, and the guard
+  install (with the dev-dependency caveat).
 
 ### Changed
 - **Tone: describe what a policy permits, not what the reader did wrong.** The

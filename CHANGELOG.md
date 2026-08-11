@@ -3,7 +3,7 @@
 All notable changes to polycheck. Format follows [Keep a Changelog](https://keepachangelog.com);
 this project is experimental and pre-1.0, so minor versions may move fast.
 
-## [Unreleased]
+## [0.6.0]
 
 ### Added
 - **`polycheck guard reset <id>` (or `--all`).** Clears a session's ledger. Effects

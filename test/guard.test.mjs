@@ -193,7 +193,13 @@ test('labeler: an UNKNOWN executable is worst-cased and named — never benign',
 });
 
 test('labeler: benign commands stay benign', () => {
-  for (const c of ['ls -la', 'git status', 'echo hello', 'pwd', 'git diff --stat']) {
+  for (const c of [
+    'ls -la', 'git status', 'echo hello', 'pwd', 'git diff --stat',
+    // cd leads half of all compound commands — worst-casing it as an unknown
+    // executable made every `cd && …` a false trifecta. Regression:
+    'cd /some/dir && git log --oneline -10 && echo --- && git diff HEAD~5 | head -200',
+    'cd repo', 'pushd x && ls && popd',
+  ]) {
     assert.deepEqual(eff(bash(c)), [], `${c} should contribute nothing`);
   }
 });

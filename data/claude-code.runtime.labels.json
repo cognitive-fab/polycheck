@@ -72,6 +72,11 @@
 
     "ls": {}, "pwd": {}, "echo": {}, "wc": {}, "sort": {}, "uniq": {}, "date": {}, "true": {}, "false": {},
     "mkdir": {}, "cp": {}, "mv": {}, "touch": {}, "diff": {}, "which": {}, "basename": {}, "dirname": {},
+    "//builtins": "Shell builtins and read-only utilities with NO exfil effect. cd leads half of all compound commands, so omitting it worst-cased every `cd && …` as a false trifecta. A pipeline still gets its effects from the dangerous member (`cat .env | cut` is sensitive via cat), so labeling these benign is safe.",
+    "cd": {}, "pushd": {}, "popd": {}, "export": {}, "set": {}, "unset": {}, ":": {}, "[": {}, "test": {},
+    "type": {}, "command": {}, "hash": {}, "alias": {}, "unalias": {}, "clear": {}, "sleep": {}, "printf": {},
+    "read": {}, "cut": {}, "tr": {}, "tee": {}, "seq": {}, "tac": {}, "nl": {}, "column": {},
+    "hostname": {}, "whoami": {}, "id": {}, "uname": {},
     "grep": { "sensitiveWhenPathArg": true },
     "rg": { "sensitiveWhenPathArg": true },
     "find": { "//": "find -exec is arbitrary execution and is caught by escalation" },

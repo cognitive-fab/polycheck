@@ -3,6 +3,13 @@
 All notable changes to polycheck. Format follows [Keep a Changelog](https://keepachangelog.com);
 this project is experimental and pre-1.0, so minor versions may move fast.
 
+## [0.6.2]
+
+### Changed
+- **`--mermaid`** now carries the fix note inside each diagram — the exact
+  ask/deny edit that closes the region, so a screenshot shows the remedy, not
+  just the hole.
+
 ## [0.6.1]
 
 ### Added

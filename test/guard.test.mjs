@@ -12,7 +12,7 @@ import { join } from 'node:path';
 
 import {
   emptyLedger, loadLedger, saveLedger, appendStep, ledgerPath,
-  heldEffects, firstContributors, addGrant, coveredByGrant, enterRegion,
+  heldEffects, firstContributors, addGrant, coveredByGrant, enterRegion, confirmGrants,
 } from '../src/guard/ledger.mjs';
 import {
   labelCall, loadRuntimeLabels, splitCommands, tokenize,
@@ -123,6 +123,10 @@ test('ledger: an unparseable target never becomes a wildcard grant', () => {
   assert.equal(addGrant(led, { region: 'credential-egress', effect: 'egress', providerKey: 'Bash→*', atStep: 1 }), null);
   assert.equal(led.grants.length, 0);
   addGrant(led, { region: 'credential-egress', effect: 'egress', providerKey: 'Bash→api.example.com', atStep: 1 });
+  // M1: a grant is PENDING until its call's post confirms it ran, and a pending
+  // grant covers nothing — so a channel gates until it is confirmed.
+  assert.equal(coveredByGrant(led, 'credential-egress', 'Bash→api.example.com'), false);
+  confirmGrants(led, 1);
   assert.equal(coveredByGrant(led, 'credential-egress', 'Bash→api.example.com'), true);
   assert.equal(coveredByGrant(led, 'credential-egress', 'Bash→attacker.example'), false);
 });

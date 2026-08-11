@@ -16,7 +16,7 @@ import { dirname, join } from 'node:path';
 
 import { emptyLedger } from '../src/guard/ledger.mjs';
 import { loadRuntimeLabels } from '../src/guard/runtime-label.mjs';
-import { evaluatePre } from '../src/guard/run.mjs';
+import { evaluatePre, evaluatePost } from '../src/guard/run.mjs';
 import { renderDecision, failClosed } from '../src/guard/emit.mjs';
 import { runtimeRegions, buildBits } from '../src/guard/decide.mjs';
 import { loadLabels } from '../src/label.mjs';
@@ -30,14 +30,17 @@ const REGIONS = JSON.parse(readFileSync(join(HERE, '..', 'data', 'regions.json')
 const CWD = 'C:/repo';
 const NO_POLICY = { alreadyGates: () => false };
 
-// `guard replay` in miniature.
+// `guard replay` in miniature. Each call runs pre, then — unless the call is
+// marked `deny: true` — a post, modelling the call being approved and executed.
+// A denied call fires no post, so its optimistic grant is never confirmed (M1).
 function runSession(calls, opts = {}) {
-  const ledger = emptyLedger('replay', CWD, { basis: 'capability' });
+  const ledger = emptyLedger('replay', CWD, { basis: opts.basis || 'capability' });
+  const deps = { ledger, labels: LABELS, rt: RT, regionsFile: REGIONS, config: opts.config || {}, policy: NO_POLICY, quiet: true };
   return calls.map((c, i) => {
-    const r = evaluatePre(
-      { session_id: 'replay', cwd: CWD, tool_name: c.tool, tool_input: c.input },
-      { ledger, labels: LABELS, rt: RT, regionsFile: REGIONS, config: opts.config || {}, policy: NO_POLICY },
-    );
+    const r = evaluatePre({ session_id: 'replay', cwd: CWD, tool_name: c.tool, tool_input: c.input, tool_use_id: `t${i}` }, deps);
+    if (!c.deny) {
+      evaluatePost({ session_id: 'replay', cwd: CWD, tool_name: c.tool, tool_use_id: `t${i}`, tool_response: c.response ?? {} }, deps);
+    }
     return { i, tool: c.tool, decision: r.decision, region: r.region?.name || null, adds: r.adds, reason: r.reason };
   });
 }

@@ -54,6 +54,12 @@ export function guardWiring() {
       ...IF_FILTERS.map((f) => ({ matcher: '*', hooks: [hookEntry('pre', f)] })),
       { matcher: MCP_MATCHER, hooks: [hookEntry('pre', null)] },
     ],
+    // The M1 evidence pass. Same coverage as pre — a call whose bytes we never
+    // see cannot sharpen or clear its own taint — so it mirrors the pre filters.
+    PostToolUse: [
+      ...IF_FILTERS.map((f) => ({ matcher: '*', hooks: [hookEntry('post', f)] })),
+      { matcher: MCP_MATCHER, hooks: [hookEntry('post', null)] },
+    ],
   };
 }
 
@@ -70,10 +76,6 @@ function mergeHooks(existing, wiring) {
     out[event] = [...prior, ...entries]; // re-installing replaces OUR entries only
   }
   return out;
-}
-
-function readJsonOr(path, fallback) {
-  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
 }
 
 // Distinguishes "absent" from "unparseable". Anything that WRITES the file back
@@ -193,7 +195,9 @@ export function guardStatus(root, sessionId) {
   if (ledger.entered.length) L.push(`  regions entered: ${ledger.entered.map((e) => `${e.region}@${e.atStep}`).join(', ')}`);
   if (ledger.grants.length) {
     L.push('  scoped approvals:');
-    for (const g of ledger.grants) L.push(`    ${g.region} · ${g.effect} via ${g.providerKey}`);
+    for (const g of ledger.grants) {
+      L.push(`    ${g.region} · ${g.effect} via ${g.providerKey}${g.pending ? '  (pending — unconfirmed, still gates)' : ''}`);
+    }
   }
   L.push('');
   L.push('  WHAT THIS DOES NOT ESTABLISH');

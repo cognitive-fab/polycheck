@@ -326,4 +326,73 @@ export function effectNames(labelled) {
   return [...labelled.effects.keys()].sort();
 }
 
+// ---------------------------------------------------------------------------
+// Evidence — the M1 `observed` basis (PostToolUse)
+// ---------------------------------------------------------------------------
+
+// The text a tool_response actually returned, flattened for pattern matching.
+function responseText(resp) {
+  if (resp == null) return '';
+  if (typeof resp === 'string') return resp;
+  const parts = [];
+  for (const k of ['stdout', 'stderr', 'originalFile', 'newString', 'content', 'text', 'body', 'result']) {
+    const v = resp[k];
+    if (typeof v === 'string') parts.push(v);
+  }
+  return parts.join('\n');
+}
+
+// Did the call actually run to completion? Bash carries no exit code, only
+// `interrupted`; treat not-interrupted as "it ran". Absence of the flag is
+// treated as ran, because a call whose post fired at all did execute.
+function ranToCompletion(resp) {
+  return !(resp && resp.interrupted === true);
+}
+
+/**
+ * What did this call OBSERVABLY do, from its response? This is the sharper,
+ * lower-taint counterpart to labelCall:
+ *
+ *   sensitive — added ONLY when returned bytes match a credential shape. This is
+ *               the false-gate reducer: a read that returned plain content does
+ *               not taint the session. (A secret the patterns miss is a missed
+ *               gate — the stated cost of the observed basis; capability stays
+ *               the safe default for headless runs.)
+ *   egress    — the call HAD egress capability and ran; the channel was live.
+ *   untrusted — the call HAD untrusted capability and ran; content came back.
+ *
+ * `observed` is a strict SHARPENING of capability, never a superset: it can only
+ * confirm or drop what capability already suspected. That keeps `sensitive`
+ * meaning "a local secret was read" (an Edit that writes a key, or a URL that
+ * returns one, do not become `sensitive` — the latter is `untrusted`), and it
+ * bounds the blast radius of a wrong pattern to a false confirmation, never a
+ * false new taint.
+ *
+ * @param capabilityEffects  effect names from labelCall (what it COULD do)
+ * @returns {{observed: string[], evidence: string[]}}
+ */
+export function observedEffects(toolResponse, capabilityEffects, rt) {
+  const cap = new Set(capabilityEffects || []);
+  const observed = new Set();
+  const evidence = [];
+
+  const ran = ranToCompletion(toolResponse);
+  // egress / untrusted are confirmed by the capability-bearing call having run.
+  if (ran && cap.has('egress')) observed.add('egress');
+  if (ran && cap.has('untrusted')) observed.add('untrusted');
+
+  // sensitive must be EARNED: the call had to be capable of reading a local
+  // secret AND the returned bytes match a credential shape. A read that returned
+  // plain content is thereby cleared — the false-gate reducer.
+  if (cap.has('sensitive')) {
+    const text = responseText(toolResponse);
+    for (const ev of (text ? rt.secretEvidence || [] : [])) {
+      let re;
+      try { re = new RegExp(ev.pattern); } catch { continue; }
+      if (re.test(text)) { observed.add('sensitive'); evidence.push(ev.id); break; }
+    }
+  }
+  return { observed: [...observed].sort(), evidence };
+}
+
 export const runtimeLabelInternals = { executableOf, hostFromSshTarget, addEffect };

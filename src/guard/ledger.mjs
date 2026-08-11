@@ -205,15 +205,72 @@ export function addGrant(ledger, { region, effect, providerKey, atStep }) {
   // A '*' providerKey is never issued from an approval — an unparseable target
   // must not become a wildcard grant (technical §4.4).
   if (!providerKey || providerKey.endsWith('→*')) return null;
-  const g = { region, effect, providerKey, atStep };
+  // PENDING until the call's PostToolUse confirms it ran. The guard never learns
+  // the human's ANSWER directly — it infers it: a call that ran fires a post
+  // (→ confirmed), a call that was DENIED fires none (→ stays pending → swept at
+  // the next pre). Until M1 this grant was created confirmed, so a denied call
+  // still suppressed the next re-prompt for its channel. A pending grant does
+  // NOT cover anything.
+  const g = { region, effect, providerKey, atStep, pending: true };
   if (!ledger.grants.some((x) => x.region === g.region && x.effect === g.effect && x.providerKey === g.providerKey)) {
     ledger.grants.push(g);
   }
   return g;
 }
 
+// Confirm every grant created at a given step — the call ran (its post fired).
+export function confirmGrants(ledger, atStep) {
+  let n = 0;
+  for (const g of ledger.grants) {
+    if (g.atStep === atStep && g.pending) { g.pending = false; n++; }
+  }
+  return n;
+}
+
+// Drop grants still pending from PRIOR calls. Between two pre events exactly one
+// call resolves, so a grant left pending at the next pre belonged to a call that
+// ran without confirming — a denial, or a post the guard failed to process. Both
+// resolve to "re-prompt", which is the safe direction (an extra prompt, never a
+// bypass). `exceptStep` protects a grant just created this turn.
+export function revokePendingGrants(ledger, exceptStep = null) {
+  const before = ledger.grants.length;
+  ledger.grants = ledger.grants.filter((g) => !g.pending || g.atStep === exceptStep);
+  return before - ledger.grants.length;
+}
+
 export function coveredByGrant(ledger, regionName, providerKey) {
-  return ledger.grants.some((g) => g.region === regionName && g.providerKey === providerKey);
+  // Only a CONFIRMED grant covers a channel. A pending one is an unproven
+  // approval and must still gate.
+  return ledger.grants.some((g) => !g.pending && g.region === regionName && g.providerKey === providerKey);
+}
+
+// Find the step a PostToolUse belongs to. Prefer the host's tool_use_id (present
+// on post; sometimes on pre). Fall back to the most recent still-unposted step
+// with the same tool — correct as long as posts arrive in call order, which the
+// host guarantees per session.
+export function findStepForPost(ledger, { toolUseId, tool }) {
+  if (toolUseId) {
+    const byId = ledger.steps.find((s) => s.toolUseId && s.toolUseId === toolUseId);
+    if (byId) return byId;
+  }
+  for (let i = ledger.steps.length - 1; i >= 0; i--) {
+    const s = ledger.steps[i];
+    if (!s.posted && s.tool === tool) return s;
+  }
+  return null;
+}
+
+// Fold newly-observed effects into a step and the ledger's observed held set.
+// Monotone (I1): observed only grows, and never touches capability.
+export function addObserved(ledger, step, observed) {
+  step.posted = true;
+  step.adds = step.adds || { capability: [], observed: [] };
+  const cur = new Set(step.adds.observed || []);
+  for (const e of observed) cur.add(e);
+  step.adds.observed = [...cur].sort();
+  const held = new Set(ledger.held.observed);
+  for (const e of observed) held.add(e);
+  ledger.held.observed = [...held].sort();
 }
 
 // The held set on the configured basis, as a Set of effect names.

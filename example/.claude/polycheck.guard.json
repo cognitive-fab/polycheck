@@ -1,0 +1,9 @@
+{
+  "//": "Guard config for the sandbox. Names the regions the guard is allowed to gate, so `polycheck example/` treats the installed guard as a VERIFIED gate for exactly these. basis 'capability' gates on suspicion (safe default); switch to 'observed' to gate on evidence (M1) and watch a Read of a plain file stop tainting the session.",
+  "basis": "capability",
+  "onComplete": {
+    "lethal-trifecta": "ask",
+    "credential-egress": "ask"
+  },
+  "prewarn": true
+}

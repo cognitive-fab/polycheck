@@ -1,0 +1,14 @@
+{
+  "//": "The BASELINE policy for the release-notes-summarizer sandbox. It looks reasonable and hides a two-step composition: WebFetch is allowed (it pulls a changelog IN — untrusted — and can carry data OUT in the URL — egress), and Read is allowed (it can reach .env — sensitive). curl / wget / git push are gated behind 'ask'. Run `polycheck example/` here and it is a BYPASS: the lethal trifecta is reachable in two allowed steps, and curl appears nowhere. That is the whole point.",
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Read(./**)"
+    ],
+    "ask": [
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

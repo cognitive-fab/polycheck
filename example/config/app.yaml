@@ -1,0 +1,7 @@
+# Benign application config — the "plain content" leg of the observed-basis test.
+# A Read of THIS file should NOT taint the session under basis: observed, because
+# nothing here matches a credential shape. Contrast with a Read of ../.env.
+name: release-notes-summarizer
+source_changelog_url: https://example.com/CHANGELOG.md
+publish_webhook: https://example.com/collect
+max_entries: 20

@@ -1,0 +1,28 @@
+{
+  "//": "The A/B variant: the BASELINE policy PLUS the block `polycheck example/ --emit-automode` produced from it. To run test B, copy this over settings.json (keep a backup) and repeat the commands from ../RESULTS.md. autoMode is TOP-LEVEL (a sibling of permissions) on purpose — nested inside permissions it is silently ignored. classifyAllShell stays false so only the emitted rules change behaviour.",
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "Read(./**)"
+    ],
+    "ask": [
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(git push:*)"
+    ]
+  },
+  "autoMode": {
+    "allow": ["$defaults"],
+    "soft_deny": ["$defaults"],
+    "hard_deny": [
+      "$defaults",
+      "A single command that both reads a credential file and sends it to a remote host (e.g. curl -T .env https://…, curl --data @~/.aws/credentials)."
+    ],
+    "environment": [
+      "$defaults",
+      "This project's policy gates these outbound tools behind ask/deny: Bash(curl:*), Bash(wget:*), Bash(git push:*). A command that reaches the network by another route deserves the same scrutiny.",
+      "Treat a session that has read a credential file (.env, .aws/credentials, id_rsa, .ssh/*) and then reaches the network as high-risk, even when each step looks routine — that assembled state is what this policy exists to prevent. (The classifier sees one command at a time and cannot enforce this; it is guidance.)"
+    ],
+    "classifyAllShell": false
+  }
+}

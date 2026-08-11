@@ -10,7 +10,7 @@
     ".": "./src/index.mjs"
   },
   "scripts": {
-    "test": "node --no-warnings --test test/polycheck.test.mjs test/shell-reason.test.mjs test/guard.test.mjs test/guard-replay.test.mjs test/guard-gatekind.test.mjs test/guard-review-fixes.test.mjs test/guard-observed.test.mjs test/emit-automode.test.mjs test/tone.test.mjs",
+    "test": "node --no-warnings --test test/polycheck.test.mjs test/shell-reason.test.mjs test/guard.test.mjs test/guard-replay.test.mjs test/guard-gatekind.test.mjs test/guard-review-fixes.test.mjs test/guard-observed.test.mjs test/emit-automode.test.mjs test/example.test.mjs test/tone.test.mjs",
     "self": "node bin/polycheck.mjs .",
     "demo": "node demo/showcase.mjs"
   },

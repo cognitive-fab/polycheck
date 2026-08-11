@@ -271,3 +271,24 @@ test('WP0 facts stay pinned: passthrough is {} and ask blocks', () => {
   assert.equal(COMPAT.askIsBlocking, true);
   assert.equal(COMPAT.reasonRendersInPrompt, true);
 });
+
+test('guard reset: clears a poisoned session ledger, reports what it wiped', async () => {
+  const { listSessions, resetLedger, emptyLedger, saveLedger, appendStep, enterRegion } = await import('../src/guard/ledger.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'pcreset-'));
+  const env = { POLYCHECK_STATE_DIR: dir };
+
+  const led = emptyLedger('poison', '/r');
+  appendStep(led, { tool: 'Bash', adds: { capability: ['untrusted', 'sensitive', 'egress'], observed: [] } });
+  enterRegion(led, 'lethal-trifecta', 1);
+  saveLedger(led, env);
+  assert.deepEqual(listSessions(env), ['poison']);
+
+  const summary = resetLedger('poison', env);
+  assert.equal(summary.steps, 1);
+  assert.deepEqual(summary.held.capability, ['egress', 'sensitive', 'untrusted']);
+  assert.deepEqual(summary.entered, ['lethal-trifecta']);
+  assert.deepEqual(listSessions(env), [], 'the ledger is gone — the next call starts empty');
+
+  assert.equal(resetLedger('poison', env), null, 'resetting a gone session is a no-op, not an error');
+  rmSync(dir, { recursive: true, force: true });
+});

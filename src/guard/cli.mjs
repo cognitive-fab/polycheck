@@ -11,7 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { analyze } from '../index.mjs';
-import { loadLedger, stateDir } from './ledger.mjs';
+import { loadLedger, stateDir, listSessions, resetLedger } from './ledger.mjs';
 import { COMPAT } from './compat.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -216,6 +216,38 @@ export function guardStatus(root, sessionId) {
   return { text: L.join('\n'), exit: 0 };
 }
 
+// Clear a poisoned session ledger. Effects are monotone, so one false-positive
+// otherwise taints a session for good; this is the mid-session way out.
+export function guardReset(sessionId, { all = false } = {}) {
+  const L = ['polycheck guard · reset', ''];
+  const dir = join(stateDir(), 'sessions');
+
+  if (all) {
+    let n = 0;
+    for (const id of listSessions()) { if (resetLedger(id)) n++; }
+    L.push(`  cleared ${n} session ledger${n === 1 ? '' : 's'} in ${dir}.`);
+    return { text: L.join('\n'), exit: 0 };
+  }
+
+  if (!sessionId) {
+    L.push('  usage: polycheck guard reset <session-id>   (or --all to clear every session)');
+    const ids = listSessions();
+    if (ids.length) { L.push(''); L.push('  sessions with a ledger:'); for (const id of ids.slice(0, 20)) L.push(`    ${id}`); }
+    else L.push('  no session ledgers found.');
+    return { text: L.join('\n'), exit: 0 };
+  }
+
+  const s = resetLedger(sessionId);
+  if (!s) { L.push(`  no ledger for session '${sessionId}' — nothing to clear.`); return { text: L.join('\n'), exit: 0 }; }
+  L.push(`  cleared session '${sessionId}':`);
+  L.push(`    steps:  ${s.steps}${s.unreadable ? ' (ledger was unreadable)' : ''}`);
+  if (s.held) L.push(`    held:   capability [${s.held.capability.join(', ') || '—'}]  observed [${s.held.observed.join(', ') || '—'}]`);
+  if (s.entered?.length) L.push(`    regions entered: ${s.entered.join(', ')}`);
+  L.push('');
+  L.push('  the next tool call in that session starts from an empty ledger.');
+  return { text: L.join('\n'), exit: 0 };
+}
+
 export const GUARD_HELP = `polycheck guard — runtime composition gate (opt-in, separate from the linter).
 
 The linter reasons about what a policy COULD permit. The guard reasons about what
@@ -229,6 +261,7 @@ Usage:
   polycheck guard init . --yes     install
   polycheck guard off [path]       remove the hook wiring
   polycheck guard status <id>      a session's held effects, provenance, approvals
+  polycheck guard reset <id>       clear a poisoned session ledger (or --all)
   polycheck guard hook pre         (internal) the PreToolUse hook entry point
   polycheck guard hook session-start   (internal)
 `;

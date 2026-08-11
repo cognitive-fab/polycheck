@@ -22,7 +22,7 @@ import { planWrite, applyWrite, renderWriteText } from '../src/write.mjs';
 // `polycheck guard …` is a separate, opt-in product that shares this binary.
 // It is dispatched before flag parsing so its own subcommand grammar applies.
 if (process.argv[2] === 'guard') {
-  const { guardInit, guardOff, guardStatus, GUARD_HELP } = await import('../src/guard/cli.mjs');
+  const { guardInit, guardOff, guardStatus, guardReset, GUARD_HELP } = await import('../src/guard/cli.mjs');
   const sub = process.argv[3];
   const rest = process.argv.slice(4);
   const yes = rest.includes('--yes');
@@ -41,6 +41,7 @@ if (process.argv[2] === 'guard') {
   if (sub === 'init') out = guardInit(pathArg, { yes });
   else if (sub === 'off') out = guardOff(pathArg);
   else if (sub === 'status') out = guardStatus('.', rest.find((a) => !a.startsWith('-')));
+  else if (sub === 'reset') out = guardReset(rest.find((a) => !a.startsWith('-')), { all: rest.includes('--all') });
   else out = { text: GUARD_HELP, exit: sub ? 3 : 0 };
   process.stdout.write(out.text + '\n');
   process.exit(out.exit ?? 0);

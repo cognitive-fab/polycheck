@@ -6,6 +6,10 @@ this project is experimental and pre-1.0, so minor versions may move fast.
 ## [Unreleased]
 
 ### Added
+- **`polycheck guard reset <id>` (or `--all`).** Clears a session's ledger. Effects
+  are monotone, so a single false-positive otherwise taints a whole session with
+  no way back except starting over; this is the mid-session escape hatch. Reports
+  what it wiped.
 - **`proprietary` effect + `source-egress` region.** polycheck now models
   first-party *source* as a distinct asset from secrets: a Read whose glob covers
   code is `proprietary`, and `source-egress = proprietary ∧ egress` names the loss

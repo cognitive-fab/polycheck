@@ -21,7 +21,7 @@
 // never read by decide(). Determinism (functional A4) depends on that.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -288,6 +288,35 @@ export function firstContributors(ledger, effects, basis = ledger.basis) {
     }
   }
   return out;
+}
+
+// The session ids that currently have a ledger on disk (the safe-id filenames).
+export function listSessions(env = process.env) {
+  const dir = join(stateDir(env), 'sessions');
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
+  } catch { return []; }
+}
+
+// Clear a session's ledger — the escape hatch for a poisoned one. Effects are
+// monotone, so a single false-positive taints the whole session with no way back
+// except starting over; reset is that way back. It DELETES rather than
+// quarantines: the point is to make the poison gone, and the ledger only ever
+// under-approximates taint, so keeping a stale copy is not a safety win — the
+// next call simply starts from empty. Returns a summary of what was cleared, or
+// null if there was nothing.
+export function resetLedger(sessionId, env = process.env) {
+  const path = ledgerPath(sessionId, env);
+  if (!existsSync(path)) return null;
+  let summary;
+  try {
+    const led = JSON.parse(readFileSync(path, 'utf8'));
+    summary = { steps: (led.steps || []).length, held: led.held || null, entered: (led.entered || []).map((e) => e.region) };
+  } catch {
+    summary = { steps: 0, held: null, entered: [], unreadable: true };
+  }
+  unlinkSync(path);
+  return summary;
 }
 
 export const ledgerInternals = { digestOf, safeId, looksLikeLedger, tmpdir };

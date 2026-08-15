@@ -1,0 +1,4 @@
+{
+  "id": "docs-card",
+  "outputs": ["docs/report.md"]
+}

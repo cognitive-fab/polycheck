@@ -1,0 +1,12 @@
+{
+  "//": "A coding-card policy for the release-notes-summarizer sandbox. It looks like every coding-agent policy: read the repo, write the source. Run it with --mandate and the two cards land on opposite verdicts — the summarizer card can write the test that decides whether its own output passes, while the config card cannot, because its writes are gated. Nothing here is a bypass; the regions come back clean. This is a least-privilege finding the region check has no vocabulary for.",
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./src/**)"
+    ],
+    "ask": [
+      "Edit(./config/**)"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(./src/**)"
+    ],
+    "ask": [
+      "Edit(./src/**)"
+    ]
+  }
+}

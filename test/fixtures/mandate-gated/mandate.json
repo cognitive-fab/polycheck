@@ -1,0 +1,4 @@
+{
+  "id": "summarize-card",
+  "outputs": ["src/summarize.mjs"]
+}

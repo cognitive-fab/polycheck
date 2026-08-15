@@ -163,6 +163,9 @@ polycheck . --json               machine-readable output
 polycheck . --md                 a fenced block ready to paste into an issue/PR
 polycheck . --mermaid            each witness as a mermaid sequence diagram
                                  (GitHub renders it; screenshot-ready)
+polycheck . --mandate <file>     also check the policy against a task's declared
+                                 OUTPUTS — does it confine the agent to what the
+                                 task asked for, or reach past it with no gate?
 polycheck . --labels <file>      override the effect-label pack
 polycheck . --regions <file>     override the forbidden-region pack
 polycheck . --no-assume-defaults strict: model only explicitly-granted perms
@@ -175,6 +178,102 @@ polycheck guard init | off | status    the opt-in runtime layer (see below)
 By default polycheck models Claude Code's auto-allowed read-only tools (`Read`,
 `Grep`) as ungated, so the common case (an egress tool but no explicit `Read`)
 isn't a false pass; `--no-assume-defaults` gives the strict, explicit-only view.
+
+### `--mandate` — the second policy surface
+
+`.claude/settings.json` says what an agent **may** do in this repo, ever. A
+*mandate* says what **this task** declared it would produce. Those are different
+grants, and the gap between them is where the interesting finding lives:
+
+```
+effective = settings ∩ mandate     the authority the agent actually has here
+surplus   = settings \ mandate     what it can reach anyway, with no gate
+```
+
+The hazard this exists for: a session that can write **both an output and the
+check that passes that output**. Hit a red gate, and there are two ways to make
+it green — fix the code, or change the test. A policy that permits the second
+one, ungated, is a policy where a passing verdict is not evidence.
+
+That hazard cannot be caught with a glob. *Every* coding-agent repo grants edit
+and run-tests, so a rule like "warn when tests are writable" fires on every repo
+on earth and is muted within a day. The mandate is the discriminator:
+`src/summarize.test.mjs` is off-mandate not because it looks like a test, but
+because **it was never in the grant**. The glob only comes back at the end, to
+*rank* what the surplus reaches.
+
+```json
+{
+  "id": "summarizer-card",
+  "gloss": "build the release-notes summarizer",
+  "root": "app",
+  "outputs": ["app/src/summarize.mjs"]
+}
+```
+
+`{"mandates": [ … ]}` holds several — a run is usually a set of cards, not one
+task. `root` is optional; without it, matching is deliberately tolerant of a
+leading path segment (an orchestrator's spec is normally written one directory up
+from where the session runs) and **the report says so**, because a check that
+flags every legitimate output is exactly the failure this is meant to prevent.
+
+There is a runnable sandbox in [`example/mandate/`](example/mandate/) — a policy
+whose forbidden regions all come back **clean**, and two cards that land on
+opposite verdicts under it:
+
+```
+node bin/polycheck.mjs example/mandate --mandate example/mandate/mandate.json
+```
+
+```
+FORBIDDEN REGIONS  — effect-combinations you declared should never be reachable without a gate
+  • lethal-trifecta    INCONCLUSIVE — no granted tool provides: untrusted, egress
+  • credential-egress  INCONCLUSIVE — no granted tool provides: egress
+  • source-egress      INCONCLUSIVE — no granted tool provides: egress
+
+MANDATE  — what the task declared it would write, vs what the policy lets it reach
+  ✗ summarizer-card    SURPLUS — ungated write grants reach 3 paths it did not declare
+  ✓ config-card        CONFINED — every write grant crosses a gate
+
+SURPLUS · summarizer-card  (declares: app/src/summarize.mjs)
+  build the release-notes summarizer
+  Write grants that fire with no gate, and what they reach beyond the declaration:
+
+    1  Edit(./src/**)                 allow  ⟶ src/summarize.spec.mjs         oracle
+    2  Edit(./src/**)                 allow  ⟶ src/summarize.test.mjs         oracle
+    3  Edit(./src/**)                 allow  ⟶ src/undeclared.mjs             scope
+
+  oracle — the file that decides whether this output passes — writable alongside the output itself
+  scope — undeclared reach — permitted by the policy, not asked for by the task
+
+  Each of these is a grant someone wrote, doing what it says. The observation
+  is only that the reach is wider than the task declared — nothing here says
+  what any session did with it.
+     fix declare it, or narrow it. Either add these paths to "outputs", or replace
+         Edit(./src/**) with a grant scoped to what the task declared
+         (Edit(src/summarize.mjs)), or move it to 'ask'.
+```
+
+Nothing can leave that machine — no egress tool is granted, so the region check
+has nothing to say. The finding is real anyway: the same session can write
+`summarize.mjs` and the test that decides whether `summarize.mjs` passes. And
+`config-card` is `CONFINED` under that identical policy, because its writes sit
+behind `ask`.
+
+Findings are ranked `policy` > `oracle` > `scope` — a grant that reaches
+`.claude/settings.json` lets the agent widen the rules it is judged by, which
+outranks reaching the check it has to pass, which outranks ordinary undeclared
+reach. `SURPLUS` exits **1**, the same code as a region bypass, so an adopted CI
+step catches it with no edit.
+
+**What it does not claim.** polycheck reads a policy, never a transcript. It
+reports *reach* — "this policy permits ungated writes to the file that decides
+whether this output passes" — and says nothing about what any session did with
+it. The finding is a description, not an accusation; the incident that prompted
+this feature turned out to be a **correct** fixture fix.
+
+It is also opt-in and inert without the flag: no `--mandate`, no behaviour
+change.
 
 ### `--tidy` — read the running total you never agreed to
 
@@ -385,6 +484,10 @@ until a field test confirms the classifier honors emitted rules
 - **`src/model.mjs`** — compile rules into **actions**: `allow` → ungated edge,
   `ask` / matching `PreToolUse` hook → gated edge, `deny` → no edge,
   `bypassPermissions` → every edge ungated.
+- **`src/mandate.mjs`** — the optional second surface (`--mandate`): read a task's
+  declared `outputs`, derive concrete off-mandate exemplar paths from them
+  (`policy` / `oracle` / `scope`), and report which ungated write grants reach
+  them. Never consulted unless the flag is passed.
 - **`src/check.mjs`** — the checker. Delete the gates, BFS the reachable
   states, and for each **forbidden region** (`data/regions.json`) return the
   shortest gate-free path (a **witness**), or decide whether every path crosses a
@@ -426,6 +529,12 @@ polycheck prints these every run:
   anything outside the tool interface is not.
 - **Subagent taint is not propagated (v1).** `Task` spawns are a known gap —
   named, not silently cleared.
+- **A mandate is trusted input, not a verified one** (`--mandate` only). The check
+  assumes the declaration was authored *before and outside* the turn it
+  constrains. polycheck reads it as data and cannot establish that; if a session
+  can write its own `outputs`, the comparison becomes self-report. Keep the
+  mandate where the agent's grants do not reach — the `policy` class flags the
+  cases it can see.
 - **Modeled permissions only** — a conservative under-approximation, to keep a
   witness credible.
 

@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "//": "What each card DECLARED it would produce. Authored before the work, and kept where the agent's write grants do not reach — the check is only worth anything if the declaration is not something the session can edit.",
+  "mandates": [
+    {
+      "id": "summarizer-card",
+      "gloss": "build the release-notes summarizer",
+      "root": "app",
+      "outputs": ["app/src/summarize.mjs"]
+    },
+    {
+      "id": "config-card",
+      "gloss": "define the summarizer's config file",
+      "root": "app",
+      "outputs": ["app/config/app.yaml"]
+    }
+  ]
+}

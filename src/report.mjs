@@ -12,7 +12,9 @@
 // BYPASS is still a BYPASS — it means the words assume a defender reading their
 // own policy, not a suspect being charged.
 
-const GLYPH = { BYPASS: '✗', 'SHELL-EQUIVALENT': '✗', PROOF: '✓', VACUOUS: '•', INCONCLUSIVE: '•' };
+import { CLASS_GLOSS as MANDATE_CLASS_GLOSS } from './mandate.mjs';
+
+const GLYPH = { BYPASS: '✗', 'SHELL-EQUIVALENT': '✗', PROOF: '✓', VACUOUS: '•', INCONCLUSIVE: '•', SURPLUS: '✗', CONFINED: '✓' };
 
 function paint(on) {
   const c = (code) => (on ? (s) => `\x1b[${code}m${s}\x1b[0m` : (s) => s);
@@ -46,7 +48,7 @@ export function renderText(bundle, opts = {}) {
   const on = opts.color !== false;
   const verbose = opts.verbose === true;
   const { red, green, amber, dim, bold, cyan } = paint(on);
-  const { scan, model, check, version } = bundle;
+  const { scan, model, check, mandate, version } = bundle;
   const L = [];
   let collapsed = false; // true if we hid detail that --verbose would show
 
@@ -73,6 +75,104 @@ export function renderText(bundle, opts = {}) {
     else L.push(`  ${green(g)} ${green(name)} ${green('PROOF')}  ${dim('— region unreachable under the modeled actions')}`);
   }
   L.push('');
+
+  // MANDATE — opt-in second surface. The regions above ask "can secrets leave?";
+  // this asks "does the policy confine the agent to what the task declared?".
+  // Nothing is printed unless --mandate was passed.
+  if (mandate) {
+    L.push(bold('MANDATE') + dim(`  — what the task declared it would write, vs what the policy lets it reach`));
+    for (const m of mandate.results) {
+      const g = GLYPH[m.status] || '•';
+      const name = String(m.id).padEnd(18);
+      if (m.status === 'SURPLUS' && m.reason === 'bypass') {
+        L.push(`  ${red(g)} ${red(name)} ${red('SURPLUS')} ${dim('— defaultMode bypasses every rule, so the declaration is advisory')}`);
+      } else if (m.status === 'SURPLUS') {
+        const n = m.witness.length;
+        L.push(`  ${red(g)} ${red(name)} ${red('SURPLUS')} ${dim(n ? `— ungated write grants reach ${n} path${n > 1 ? 's' : ''} it did not declare` : '— a granted command runs caller-chosen code, so it writes anywhere')}`);
+      } else if (m.status === 'VACUOUS') {
+        L.push(`  ${amber(g)} ${amber(name)} ${amber('INCONCLUSIVE')} ${dim('— no granted tool can write repo files, so nothing was confined')}`);
+      } else {
+        L.push(`  ${green(g)} ${green(name)} ${green('CONFINED')} ${dim(m.reason === 'mediated' ? '— every write grant crosses a gate' : '— every ungated write grant stays inside the declaration')}`);
+      }
+    }
+    // How the paths were compared is part of the finding, not a footnote: a
+    // comparison that quietly loosened itself is how a check ends up passing
+    // everything. Say it where the verdict is read.
+    const mNotes = [...new Set(mandate.results.flatMap((m) => m.assumptions || []))];
+    const mCap = verbose ? mNotes.length : 3;
+    for (const a of mNotes.slice(0, mCap)) L.push(dim(`      · ${verbose ? a : trunc(a, 128)}`));
+    if (mNotes.length > mCap) { L.push(dim(`      · … and ${mNotes.length - mCap} more`)); collapsed = true; }
+    L.push('');
+
+    // A shell grant is a property of the POLICY, not of any one declaration: it
+    // reaches every card identically. Printing the same block once per card is
+    // the noise failure this whole feature exists to avoid, so the shared cause
+    // is stated once and the cards are named in a list.
+    const shellOnly = mandate.results.filter((m) => m.status === 'SURPLUS' && m.reason === 'shell');
+    if (shellOnly.length) {
+      const n = shellOnly[0].shell.length;
+      L.push(red(bold(`SURPLUS · ${shellOnly.length === 1 ? shellOnly[0].id : `${shellOnly.length} mandates`}`)) + dim('  (shared cause: a granted command runs caller-chosen code)'));
+      if (shellOnly.length > 1) {
+        const ids = shellOnly.map((m) => m.id);
+        for (let i = 0; i < ids.length; i += 3) L.push(dim('    ') + ids.slice(i, i + 3).join(dim('  ·  ')));
+      }
+      L.push(dim(`  ${n} granted command${n > 1 ? 's' : ''} run caller-chosen code (see SHELL-EQUIVALENT below), so`));
+      L.push(dim('  they write anywhere a file can be written. No declaration narrows that, so'));
+      L.push(dim('  the per-path comparison below is not what binds here — the shell grant is.'));
+      L.push(cyan('     fix') + ' gate or narrow those grants first. Until then a mandate cannot confine');
+      L.push(dim('         anything, and closing it card-by-card would be closing the wrong thing.'));
+      L.push('');
+    }
+
+    for (const m of mandate.results) {
+      if (m.status !== 'SURPLUS' || m.reason === 'shell') continue;
+      L.push(red(bold(`SURPLUS · ${m.id}`)) + dim(`  (declares: ${trunc(m.outputs.join(', '), 60)})`));
+      if (m.gloss) L.push(dim(`  ${trunc(m.gloss)}`));
+      if (m.reason === 'bypass') {
+        L.push(dim('  permissions.defaultMode = bypassPermissions — no rule is consulted, so no'));
+        L.push(dim('  declaration constrains anything. This dominates every finding below.'));
+        L.push(cyan('     fix') + ' remove bypassPermissions before a mandate can mean anything here.');
+        L.push('');
+        continue;
+      }
+      if (m.witness.length) {
+        L.push(dim('  Write grants that fire with no gate, and what they reach beyond the declaration:'));
+        L.push('');
+        const shown = verbose ? m.witness : m.witness.slice(0, 6);
+        shown.forEach((h, i) => {
+          const last = i === shown.length - 1 && shown.length === m.witness.length;
+          L.push(`    ${bold(String(i + 1))}  ${h.grant.padEnd(30)} ${dim('allow')}  ⟶ ${h.path.padEnd(30)} ${last ? red(h.cls) : dim(h.cls)}`);
+          if (h.raw && h.raw !== h.grant) L.push(dim(`       └ ${h.source ? h.source + ': ' : ''}${h.raw}`));
+        });
+        if (m.witness.length > shown.length) {
+          L.push(dim(`    … and ${m.witness.length - shown.length} more (--verbose lists every one)`));
+          collapsed = true;
+        }
+        L.push('');
+        const classes = [...new Set(m.witness.map((h) => h.cls))];
+        for (const c of classes) L.push(dim(`  ${c} — ${MANDATE_CLASS_GLOSS[c] || 'undeclared reach'}`));
+        L.push('');
+        L.push(dim('  Each of these is a grant someone wrote, doing what it says. The observation'));
+        L.push(dim('  is only that the reach is wider than the task declared — nothing here says'));
+        L.push(dim('  what any session did with it.'));
+      }
+      if (m.shell?.length) {
+        const n = m.shell.length;
+        L.push(dim(`  ${n} granted command${n > 1 ? 's' : ''} run caller-chosen code (see SHELL-EQUIVALENT below), so`));
+        L.push(dim('  they write anywhere a file can be written — no declaration narrows them.'));
+      }
+      if (m.fix?.kind === 'shell') {
+        L.push(cyan('     fix') + ' the shell grants above are the binding constraint here: gate or narrow');
+        L.push(dim('         them first — a declaration cannot confine a command that runs anything.'));
+      } else if (m.fix?.kind === 'confine') {
+        const grants = m.fix.grants.slice(0, 4).join(', ');
+        L.push(cyan('     fix') + ` declare it, or narrow it. Either add these paths to "outputs", or replace`);
+        L.push(dim(`         ${grants}${m.fix.grants.length > 4 ? `, +${m.fix.grants.length - 4}` : ''} with a grant scoped to what the task declared`));
+        L.push(dim(`         (${trunc(m.fix.declare.map((o) => `Edit(${o})`).join(', '), 70)}), or move it to 'ask'.`));
+      }
+      L.push('');
+    }
+  }
 
   // SHELL-EQUIVALENT — reported once (the same grant makes every region trivial).
   if (check.shellGrants && check.shellGrants.length) {
@@ -230,6 +330,13 @@ export function renderText(bundle, opts = {}) {
   L.push(`    modeled; anything the agent does outside the tool interface is not.`);
   L.push(`  ${cyan('•')} ${bold('subagent taint is not propagated (v1).')} Task/subagent spawns are a known`);
   L.push(`    gap — named, not silently cleared.`);
+  if (mandate) {
+    L.push(`  ${cyan('•')} ${bold('the mandate is trusted input, not a verified one.')} This check assumes the`);
+    L.push(`    declaration was authored BEFORE and OUTSIDE the turn it constrains. polycheck`);
+    L.push(`    reads it as data and cannot establish that; if a session can write its own`);
+    L.push(`    "outputs", the comparison becomes self-report. Keep the mandate where the`);
+    L.push(`    agent's grants do not reach — the 'policy' class above flags the cases it can see.`);
+  }
   L.push(`  ${cyan('•')} ${bold("'ask' is a gate, but a weaker one than a PROOF implies.")} A mediated`);
   L.push(`    verdict means a human is in the loop, not that they will refuse: approval`);
   L.push(`    fatigue is real and an injected call can be shaped to look routine. Treat a`);
@@ -241,8 +348,12 @@ export function renderText(bundle, opts = {}) {
   L.push('');
 
   const broken = check.results.filter((r) => r.status === 'BYPASS' || r.status === 'SHELL-EQUIVALENT');
+  const surplus = (mandate?.results || []).filter((m) => m.status === 'SURPLUS');
   if (broken.length) {
     L.push(red(bold(`verdict: ${broken.length} region(s) reachable with no gate crossed — ${broken.map((r) => r.region.name).join(', ')}`)));
+    if (surplus.length) L.push(red(bold(`         and ${surplus.length} mandate(s) with undeclared reach — ${surplus.map((m) => m.id).join(', ')}`)));
+  } else if (surplus.length) {
+    L.push(red(bold(`verdict: ${surplus.length} mandate(s) reach further than they declared — ${surplus.map((m) => m.id).join(', ')}`)));
   } else if (check.results.some((r) => r.status === 'VACUOUS' || r.status === 'INCONCLUSIVE')) {
     const unver = check.results.some((r) => r.status === 'INCONCLUSIVE');
     L.push(amber(bold(`verdict: INCONCLUSIVE — ${unver ? 'a path is mediated only by an unverified gate, which polycheck cannot confirm blocks' : 'a required effect has no granted tool, so nothing was mediated'}. This is not a proof.`)));
@@ -265,8 +376,9 @@ export function renderMarkdown(bundle, opts = {}) {
 }
 
 export function renderJson(bundle) {
-  const { scan, model, check, version } = bundle;
+  const { scan, model, check, mandate, version } = bundle;
   const broken = check.results.some((r) => r.status === 'BYPASS' || r.status === 'SHELL-EQUIVALENT');
+  const surplus = (mandate?.results || []).some((m) => m.status === 'SURPLUS');
   return JSON.stringify({
     version,
     repo: scan.root,
@@ -302,9 +414,33 @@ export function renderJson(bundle) {
         held: st.held,
       })),
     })),
+    mandate: mandate ? {
+      source: mandate.sourcePath,
+      results: mandate.results.map((m) => ({
+        id: m.id,
+        gloss: m.gloss ?? null,
+        root: m.root ?? null,
+        outputs: m.outputs,
+        status: m.status,
+        reason: m.reason ?? null,
+        fix: m.fix ?? null,
+        shell: m.shell ?? null,
+        mediators: m.mediators ?? null,
+        assumptions: m.assumptions ?? [],
+        surplus: (m.witness || []).map((h, i) => ({
+          step: i + 1,
+          grant: h.grant,
+          rule: h.raw ?? null,
+          source: h.source ?? null,
+          path: h.path,
+          class: h.cls,
+        })),
+      })),
+    } : null,
     assumptions: model.assumptions,
     warnings: scan.warnings,
     verdict: broken ? 'bypass'
+      : surplus ? 'surplus'
       : check.results.some((r) => r.status === 'VACUOUS') ? 'vacuous' : 'proof',
   }, null, 2);
 }

@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "id": "summarize-card",
+  "gloss": "build the summarizer module and its model check",
+  "root": "app",
+  "outputs": ["app/src/summarize.mjs"]
+}

@@ -6,7 +6,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { analyze } from '../src/index.mjs';
@@ -14,6 +15,7 @@ import { emitAutomode } from '../src/emit-automode.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE = join(HERE, '..', 'example');
+const MANDATE_EX = join(EXAMPLE, 'mandate');
 const region = (b, n) => b.check.results.find((r) => r.region.name === n);
 
 test('example: the baseline policy is the two-step BYPASS it advertises', () => {
@@ -48,4 +50,41 @@ test('example: the fake secret is credential-SHAPED so a detector fires on it', 
   const env = readFileSync(join(EXAMPLE, '.env'), 'utf8');
   assert.match(env, /\bAKIA[0-9A-Z]{16}\b/, 'the fixture key must match the AWS shape');
   assert.match(env, /FAKE|EXAMPLE/i, 'and must be obviously non-secret');
+});
+
+// --- example/mandate — the --mandate sandbox -------------------------------
+// Its README pastes a verdict table. These keep that paste true: the whole
+// point of the sandbox is that the regions are CLEAN and the finding is real
+// anyway, so if the labeler ever makes it a bypass the demo has lost its claim.
+
+test('example/mandate: no region is broken — the finding is not a bypass in disguise', () => {
+  const b = analyze(MANDATE_EX, { mandatePath: join(MANDATE_EX, 'mandate.json') });
+  for (const r of b.check.results) {
+    assert.ok(r.status !== 'BYPASS' && r.status !== 'SHELL-EQUIVALENT',
+      `${r.region.name} became ${r.status} — the sandbox must show a mandate finding on a clean policy`);
+  }
+});
+
+test('example/mandate: two cards, opposite verdicts, one policy', () => {
+  const b = analyze(MANDATE_EX, { mandatePath: join(MANDATE_EX, 'mandate.json') });
+  const by = Object.fromEntries(b.mandate.results.map((m) => [m.id, m]));
+  assert.equal(by['summarizer-card'].status, 'SURPLUS');
+  assert.equal(by['config-card'].status, 'CONFINED', 'gating the writes is the fix the README tells you to try');
+  // the README names this exact path as the point of the example
+  const oracle = by['summarizer-card'].witness.find((h) => h.path === 'src/summarize.test.mjs');
+  assert.ok(oracle, 'the test that decides whether the declared output passes');
+  assert.equal(oracle.cls, 'oracle');
+});
+
+test('example/mandate: the documented fix actually confines both cards', () => {
+  // The README says narrowing the grant to the declared output clears it. If
+  // that stopped being true the sandbox would be teaching a fix that does not work.
+  const dir = mkdtempSync(join(tmpdir(), 'pcex-'));
+  mkdirSync(join(dir, '.claude'), { recursive: true });
+  writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({
+    permissions: { allow: ['Read(./**)', 'Edit(./src/summarize.mjs)'], ask: ['Edit(./config/**)'] },
+  }));
+  const b = analyze(dir, { mandatePath: join(MANDATE_EX, 'mandate.json') });
+  assert.ok(b.mandate.results.every((m) => m.status === 'CONFINED'), 'both cards should clear');
+  rmSync(dir, { recursive: true, force: true });
 });

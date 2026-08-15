@@ -7,9 +7,11 @@
 //   polycheck . --json          machine-readable output
 //   polycheck . --md            a fenced block ready to paste into an issue
 //   polycheck . --no-assume-defaults   strict: only explicitly-granted permissions
+//   polycheck . --mandate card.json    also check the policy against a task's declared outputs
 //   polycheck . --labels f.json --regions r.json   override the packs
 //
-// Exit codes:  0 proof · 1 a forbidden region is bypassable (incl. shell-equivalent)
+// Exit codes:  0 proof · 1 a forbidden region is bypassable (incl. shell-equivalent),
+//                or a mandate reaches past what it declared
 //              · 2 inconclusive (a required effect has no granted tool) · 3 usage/no-policy
 // Deterministic, offline, zero dependencies.
 
@@ -49,7 +51,7 @@ if (process.argv[2] === 'guard') {
 }
 
 function parseArgs(argv) {
-  const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true, verbose: false, tidy: false, write: false };
+  const opts = { root: null, format: 'text', color: undefined, labels: DEFAULT_LABELS, regions: DEFAULT_REGIONS, assumeDefaults: true, verbose: false, tidy: false, write: false, mandate: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') opts.format = 'json';
@@ -65,6 +67,7 @@ function parseArgs(argv) {
     else if (a === '--no-assume-defaults') opts.assumeDefaults = false;
     else if (a === '--labels') opts.labels = argv[++i];
     else if (a === '--regions') opts.regions = argv[++i];
+    else if (a === '--mandate') opts.mandate = argv[++i];
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a.startsWith('-')) { opts.error = `unknown flag: ${a}`; }
     else opts.root = a;
@@ -89,10 +92,14 @@ Usage:
   polycheck . --json | --md        machine output / paste-ready block
   polycheck . --mermaid            each witness as a mermaid sequence diagram
   polycheck . --no-assume-defaults strict: model only explicitly-granted permissions
+  polycheck . --mandate <file>     also check the policy against a task's declared
+                                   OUTPUTS: does it confine the agent to what the
+                                   task asked for, or reach past it with no gate?
   polycheck . --labels <file>      override the effect-label pack
   polycheck . --regions <file>     override the forbidden-region pack
 
-Exit: 0 proof · 1 bypass (incl. shell-equivalent) · 2 inconclusive · 3 usage/no-policy
+Exit: 0 proof · 1 bypass (incl. shell-equivalent) or mandate surplus · 2 inconclusive
+      · 3 usage/no-policy
       --tidy is advisory and always exits 0 — it never gates a build.
       --write exits 4 if it refused or rolled back (nothing changed on disk).
 
@@ -107,7 +114,7 @@ function main() {
 
   let bundle;
   try {
-    bundle = analyze(opts.root, { labelsPath: opts.labels, regionsPath: opts.regions, assumeDefaults: opts.assumeDefaults });
+    bundle = analyze(opts.root, { labelsPath: opts.labels, regionsPath: opts.regions, assumeDefaults: opts.assumeDefaults, mandatePath: opts.mandate });
   } catch (err) {
     process.stderr.write(`polycheck: ${err.message}\n`);
     process.exit(3);
@@ -174,8 +181,11 @@ function main() {
   else process.stdout.write(renderText(bundle, { color, verbose: opts.verbose }) + '\n');
 
   const statuses = bundle.check.results.map((r) => r.status);
-  if (statuses.includes('BYPASS') || statuses.includes('SHELL-EQUIVALENT')) process.exit(1);
-  if (statuses.includes('VACUOUS') || statuses.includes('INCONCLUSIVE')) process.exit(2);
+  // A mandate SURPLUS joins the existing CI-failing code rather than claiming a
+  // fifth: an adopted `polycheck . || exit 1` step catches it with no edit.
+  const mandateStatuses = (bundle.mandate?.results || []).map((m) => m.status);
+  if (statuses.includes('BYPASS') || statuses.includes('SHELL-EQUIVALENT') || mandateStatuses.includes('SURPLUS')) process.exit(1);
+  if (statuses.includes('VACUOUS') || statuses.includes('INCONCLUSIVE') || mandateStatuses.includes('VACUOUS')) process.exit(2);
   process.exit(0);
 }
 

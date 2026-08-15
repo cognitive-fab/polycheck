@@ -22,6 +22,10 @@ decides *before* a command runs, so no test needs to send anything anywhere.
 - **`.claude/settings.with-automode.json`** — baseline + the block
   `polycheck example/ --emit-automode` produced, for the A/B swap.
 - **`.claude/polycheck.guard.json`** — guard config.
+- **[`mandate/`](mandate/)** — a separate, self-contained sandbox for
+  **`--mandate`**: the same summarizer, a two-card declaration, and a policy whose
+  regions are all clean while one card can still write the test that decides
+  whether its own output passes. Nothing to run but polycheck itself.
 
 Quick look, from the polycheck repo root:
 
@@ -29,4 +33,8 @@ Quick look, from the polycheck repo root:
 node bin/polycheck.mjs example/                 # BYPASS + the two-step witness
 node bin/polycheck.mjs example/ --emit-automode # the classifier rules to test
 node bin/polycheck.mjs guard init example/      # what installing the guard changes
+
+node bin/polycheck.mjs example/mandate --mandate example/mandate/mandate.json
+                                                # clean regions, one card still
+                                                # reaching past what it declared
 ```

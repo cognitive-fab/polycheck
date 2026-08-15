@@ -73,8 +73,34 @@ jobs:
 ```
 
 Exit codes, so you can tune what fails the build: `0` proof · `1` bypassable
-(incl. shell-equivalent) · `2` inconclusive · `3` usage/no-policy. To also fail on
-inconclusive, add `|| test $? -eq 0` logic, or just require `0`.
+(incl. shell-equivalent) **or a mandate `SURPLUS`** · `2` inconclusive · `3`
+usage/no-policy. To also fail on inconclusive, add `|| test $? -eq 0` logic, or
+just require `0`.
+
+### 3b. (Optional) check each task against what it declared
+
+If your workflow gives an agent a per-task spec — a card, a ticket, a subagent
+brief — that spec already names the files the task is supposed to produce. Write
+those into a mandate file and polycheck will compare them against the policy:
+
+```json
+{ "id": "summarize-card", "root": "app", "outputs": ["app/src/summarize.mjs"] }
+```
+
+```
+npx -y @cognitive-fab/polycheck . --mandate cards/summarize.json
+```
+
+`CONFINED` means every ungated write grant stays inside the declaration.
+`SURPLUS` names the undeclared paths the policy reaches — ranked worst-first, so
+a grant that reaches `.claude/settings.json` (the rules the agent is judged by) or
+the test that decides whether its own output passes is reported ahead of ordinary
+undeclared reach. It exits `1`, so the CI step above needs no change.
+
+**Keep the mandate outside the agent's write grants.** The whole comparison rests
+on the declaration being authored before and outside the turn it constrains;
+polycheck says so every run, and flags the case where its own mandate file is
+reachable.
 
 ## 4. (Optional) the runtime guard
 

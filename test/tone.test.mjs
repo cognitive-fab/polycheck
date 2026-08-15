@@ -37,6 +37,21 @@ test('the dismissive "trivially" is gone from shell-equivalent output', () => {
   assert.doesNotMatch(text, /trivially/i);
 });
 
+test('the MANDATE section reports reach, not conduct', () => {
+  // The sharpest tone risk in the tool: this section exists because a session
+  // once edited a test fixture to clear a red gate — and that edit turned out to
+  // be CORRECT. polycheck reads a policy, never a transcript, so it can say what
+  // the policy permits and nothing at all about what anyone did with it.
+  const fixture = join(HERE, 'fixtures', 'mandate-surplus');
+  const text = renderText(analyze(fixture, { mandatePath: join(fixture, 'mandate.json') }), { color: false });
+  assert.match(text, /MANDATE/);
+  assert.doesNotMatch(text, /\bmalicious\b/i);
+  assert.doesNotMatch(text, /trivially/i);
+  assert.doesNotMatch(text, /\b(disabl|sabotag|cheat|tamper)/i);
+  // …and the same "keep or close" posture the rest of the report takes.
+  assert.match(text, /a grant someone wrote, doing what it says/i);
+});
+
 test('region glosses describe the hazard without charging the reader', () => {
   // The words a defender sees on every guard prompt. Accurate about the
   // composition, free of "malicious" / "attacker" / "exfiltration-by-injection".

@@ -3,6 +3,51 @@
 All notable changes to polycheck. Format follows [Keep a Changelog](https://keepachangelog.com);
 this project is experimental and pre-1.0, so minor versions may move fast.
 
+## [0.7.0]
+
+### Added
+- **`--mandate <file>` — a second, narrower policy surface.** `.claude/settings.json`
+  says what an agent may do in this repo, ever; a *mandate* says what one task
+  declared it would produce. polycheck now reports the delta: `CONFINED` when
+  every ungated write grant stays inside the declaration, `SURPLUS` with the
+  concrete undeclared paths the policy reaches. The hazard it exists for is a
+  session that can write both an output **and the check that passes that output** —
+  a policy where a green gate is not evidence. That cannot be caught with a glob
+  (every coding-agent repo grants edit + run-tests, so such a rule fires
+  everywhere and gets muted), which is why the declaration is the discriminator:
+  a file is off-mandate because it was never in the grant, not because it looks
+  like a test. Findings are ranked `policy` > `oracle` > `scope`. Exits `1`,
+  reusing the existing CI-failing code so an adopted step catches it unchanged.
+  Fully opt-in — with no flag the bundle carries `null` and the report is
+  byte-identical to before.
+- **Root tolerance, stated out loud.** A spec written one directory up
+  (`app/src/summarize.mjs` for a session running inside `app`) still
+  matches, and the report names the loosening as an assumption. Set `"root"` for
+  an exact comparison. A check that flags every legitimate output is the failure
+  this feature exists to prevent, so the tolerance is the default and the
+  strictness is the opt-in.
+- **Shaped against a real spec store before shipping.** Run over a real multi-card spec set
+  it got three things wrong, now fixed and pinned by regression: an output that is
+  itself a test derives no oracle (acceptance specs list the test beside the
+  module, and deriving from it invented `x.test.test.mjs`); a directory output
+  (`src/adapters/`) derives its neighbourhood rather than nothing, so it can no
+  longer score CONFINED by absence of evidence; and a shell grant — a property of
+  the policy, not of any declaration — is reported once with the affected cards
+  listed, instead of an identical block per card.
+- **`example/mandate/` — a runnable sandbox for it.** Two cards against one
+  policy whose forbidden regions all come back clean: `summarizer-card` is
+  `SURPLUS` because the same session can write both its declared output and the
+  test that decides whether that output passes, while `config-card` is `CONFINED`
+  because its writes sit behind `ask`. Same policy, opposite verdicts — which is
+  the argument for the feature in one screen. Pinned by tests, including one that
+  checks the fix the README recommends actually clears both cards.
+- **The invariant it cannot verify, printed rather than assumed.** The comparison
+  is only worth anything if the mandate was authored *before and outside* the turn
+  it constrains. polycheck reads it as data and says so in
+  `WHAT THIS CHECK DID NOT ESTABLISH` — and its `policy` class flags the related
+  half, a policy whose ungated writers reach the mandate file or the settings that
+  judge it.
+
 ## [0.6.2]
 
 ### Changed
